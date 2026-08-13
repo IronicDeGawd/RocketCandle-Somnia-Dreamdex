@@ -90,6 +90,11 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
               Three signatures now, then none — no wallet popups between shots.
             </li>
             <li>
+              If your position falls 10%, the game sells it and you play on.
+              That floor is watched here, in this page — close the tab and it
+              stops watching.
+            </li>
+            <li>
               Trading fees are zero. The only cost is the gap between the buy
               and sell price, crossed twice
               {roundTripCost !== null

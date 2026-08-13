@@ -45,6 +45,7 @@ export class GameScene extends Phaser.Scene {
     this.maxExposureBonus = 0.6; // A tripled position reaches 60% further
     this.maxTotalReach = 2.0; // Both bonuses together still stop here
     this.exposureStep = 0.5; // USDso added per top-up
+    this.stopLossPct = 10; // Sell automatically if the position falls this far
     this.rocketTrail = []; // Store trail points for visual effect
 
     // Trajectory prediction properties
@@ -116,6 +117,7 @@ export class GameScene extends Phaser.Scene {
     this.ejected = false;
     this.ejecting = false;
     this.buyingFirepower = false;
+    this.stopTriggered = false;
     if (this.positionTimer) {
       this.positionTimer.remove();
       this.positionTimer = null;
@@ -528,6 +530,46 @@ export class GameScene extends Phaser.Scene {
 
     this.updatePositionText();
     this.updateFeeCounter();
+    this.checkStopLoss();
+  }
+
+  /**
+   * Sell automatically if the position falls too far.
+   *
+   * This is a floor the game watches, which means it only works while this
+   * page is open. It is NOT an order resting on the exchange - that would fire
+   * even with the browser closed. Each market publishes its own stop registry
+   * for exactly that, but the contract is unverified and no client library
+   * covers it, so guessing at its interface would risk sending money into a
+   * call nobody can check. Said plainly on screen rather than implied away.
+   */
+  async checkStopLoss() {
+    if (!this.position?.open || this.stopTriggered || this.ejecting) return;
+    if (this.position.pnlPct > -this.stopLossPct) return;
+
+    const bridge = this.getTradingBridge();
+    if (!bridge) return;
+
+    this.stopTriggered = true;
+    this.showEjectNotice(
+      `Floor broken at -${this.stopLossPct}% - selling your position`
+    );
+
+    try {
+      const result = await bridge.close();
+      this.position = await bridge.snapshot();
+      this.updatePositionText();
+      this.updateFeeCounter();
+
+      if (result) {
+        this.showEjectNotice(
+          `Stopped out - ${result.proceeds.toFixed(4)} USDso back. Play on.`
+        );
+      }
+    } catch {
+      this.stopTriggered = false;
+      this.showEjectNotice("Could not sell at the floor - still holding");
+    }
   }
 
   /**
@@ -663,7 +705,7 @@ export class GameScene extends Phaser.Scene {
     const sign = pnl >= 0 ? "+" : "";
 
     this.positionText.setText(
-      `Staked ${stake.toFixed(3)} USDso  ·  now ${value.toFixed(3)}  ·  ${sign}${pnl.toFixed(4)} (${sign}${pnlPct.toFixed(2)}%)   [E] eject  [F] +${this.exposureStep} firepower`
+      `Staked ${stake.toFixed(3)} USDso  ·  now ${value.toFixed(3)}  ·  ${sign}${pnl.toFixed(4)} (${sign}${pnlPct.toFixed(2)}%)  ·  auto-sell at -${this.stopLossPct}%   [E] eject  [F] +${this.exposureStep} firepower`
     );
     this.positionText.setColor(pnl >= 0 ? "#4ade80" : "#f87171");
   }
