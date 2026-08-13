@@ -61,6 +61,15 @@ export const GAME_MARKETS = [
  * ordering lines up with the difficulty table MarketAnalyzer already holds, so
  * later levels get tougher blocks and smarter enemies for free.
  */
+/**
+ * Market a run uses when the player has not picked one yet.
+ *
+ * Somnia's own market rather than the stablecoin: the tutorial pair is
+ * deliberately flat, which makes a poor first impression for someone who just
+ * pressed play.
+ */
+export const DEFAULT_MARKET_ID = "somi";
+
 export const LEVEL_TIMEFRAMES = [
   { interval: "1m", windowsBack: 0 },
   { interval: "5m", windowsBack: 0 },
