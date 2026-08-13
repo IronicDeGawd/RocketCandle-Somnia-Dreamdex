@@ -1,5 +1,6 @@
 import { UIComponents } from "@/components/UIComponents.js";
 import { MarketDataProvider } from "@/data/MarketDataProvider.js";
+import { DreamdexLiveFeed } from "@/data/DreamdexLiveFeed.js";
 import { KeyboardTimerController } from "@/utils/KeyboardTimerController.js";
 
 /**
@@ -98,9 +99,18 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.maxLevels = this.candlestickData.length;
+
+    // A restart reuses the scene object, so anything left over from the last
+    // run would otherwise leak into this one.
+    this.stopLiveMarketFeed();
+    this.lastTrade = null;
+    this.marketFeedStatus = "connecting";
   }
 
   create() {
+    // Listen to the market this run is being played on
+    this.startLiveMarketFeed();
+
     // Set world bounds (1200x600 as updated)
     this.physics.world.setBounds(0, 0, 1200, 600);
 
@@ -361,6 +371,18 @@ export class GameScene extends Phaser.Scene {
       strokeThickness: 3, // Thick stroke for contrast against any background
     });
 
+    // Live market heartbeat (top-center, under the provenance line)
+    this.marketTickerText = this.add
+      .text(600, 68, "", {
+        fontSize: "14px",
+        fill: "#9aa4c4",
+        fontFamily: "Pixelify Sans, Arial",
+        stroke: "#000000",
+        strokeThickness: 2,
+      })
+      .setOrigin(0.5, 0);
+    this.updateMarketTicker();
+
     // Terrain provenance (top-center, under the level label)
     this.marketText = this.add
       .text(600, 48, "", {
@@ -420,6 +442,101 @@ export class GameScene extends Phaser.Scene {
   /**
    * Update HUD displays
    */
+  /**
+   * Start listening to the market the player is standing on.
+   *
+   * The ground is history; this is the present. Somebody else's trade, landing
+   * right now on the same market, shakes the level the player is aiming at.
+   * Read-only - nothing here spends or places anything.
+   */
+  startLiveMarketFeed() {
+    if (!this.marketRun || !this.marketRun.live || !this.marketRun.source) {
+      return;
+    }
+
+    this.liveFeed = new DreamdexLiveFeed({
+      symbol: this.marketRun.market.symbol,
+      source: this.marketRun.source,
+      onTrade: (trade) => this.onMarketTrade(trade),
+      onStatus: (status) => this.onMarketStatus(status),
+    });
+
+    this.liveFeed.connect();
+
+    // A scene can end in several ways - finishing, dying, quitting - and every
+    // one of them must drop the socket, or a finished run keeps listening.
+    this.events.once("shutdown", () => this.stopLiveMarketFeed());
+    this.events.once("destroy", () => this.stopLiveMarketFeed());
+  }
+
+  /** Drop the connection. Safe to call more than once. */
+  stopLiveMarketFeed() {
+    if (this.liveFeed) {
+      this.liveFeed.close();
+      this.liveFeed = null;
+    }
+  }
+
+  /**
+   * Somebody just traded. Make the player feel it.
+   *
+   * Effects scale with how large the trade was for this market, not with its
+   * raw value, so a market priced in cents and one priced in tens of thousands
+   * both behave sensibly. Ordinary trades give a small tick; a genuinely big
+   * one rattles the whole screen.
+   *
+   * @param {object} trade - normalized trade from the live feed
+   */
+  onMarketTrade(trade) {
+    this.lastTrade = trade;
+    this.updateMarketTicker();
+
+    // Never interrupt a rocket in flight. The shot is the one moment where the
+    // player's aim has to be the only thing that decided the outcome.
+    if (!this.canLaunch || this.gameOver) return;
+
+    const strength = Math.max(0.4, Math.min(4, trade.magnitude));
+    this.cameras.main.shake(120 + strength * 60, 0.001 * strength);
+  }
+
+  /**
+   * @param {string} status - "live" | "connecting" | "offline"
+   */
+  onMarketStatus(status) {
+    this.marketFeedStatus = status;
+    this.updateMarketTicker();
+  }
+
+  /**
+   * Show the market's heartbeat: the last trade somebody else made.
+   *
+   * This is the line that makes the connection undeniable - a spectator can
+   * place an order on their phone and watch it appear on the player's screen.
+   */
+  updateMarketTicker() {
+    if (!this.marketTickerText) return;
+
+    if (this.marketFeedStatus !== "live") {
+      this.marketTickerText.setText(
+        this.marketFeedStatus === "connecting" ? "market: connecting" : ""
+      );
+      this.marketTickerText.setColor("#9aa4c4");
+      return;
+    }
+
+    if (!this.lastTrade) {
+      this.marketTickerText.setText("market: live, waiting for a trade");
+      this.marketTickerText.setColor("#9aa4c4");
+      return;
+    }
+
+    const { side, quantity, price } = this.lastTrade;
+    this.marketTickerText.setText(
+      `${side === "buy" ? "BOUGHT" : "SOLD"} ${quantity} @ ${price}`
+    );
+    this.marketTickerText.setColor(side === "buy" ? "#4ade80" : "#f87171");
+  }
+
   /**
    * One line saying where this terrain came from.
    *
