@@ -18,9 +18,19 @@ async function main() {
     "RocketCandleGame"
   );
 
-  // Deploy with simple approach like Sky Ascent
-  console.log("Deploying RocketCandleGame contract...");
-  const rocketCandleGame = await RocketCandleGame.deploy();
+  // The attestation service's signing address. Runs are only accepted when
+  // countersigned by this key, so it has to be known at deploy time. It can be
+  // rotated later with setRunAttestor if the key is ever compromised.
+  const attestor = process.env.RUN_ATTESTOR_ADDRESS || deployer.address;
+  if (!process.env.RUN_ATTESTOR_ADDRESS) {
+    console.log(
+      "⚠️  RUN_ATTESTOR_ADDRESS not set - using the deployer as attestor.",
+      "Set it to the attestation service's signer before going live."
+    );
+  }
+  console.log("Run attestor:", attestor);
+
+  const rocketCandleGame = await RocketCandleGame.deploy(attestor);
 
   console.log("Waiting for deployment...");
   await rocketCandleGame.waitForDeployment();

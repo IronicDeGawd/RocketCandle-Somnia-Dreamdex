@@ -7,12 +7,18 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
+import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+
 /**
  * @title RocketCandleGame
  * @dev Combined ERC20 token and game logic contract for Rocket Candle
  * Unified contract with game mechanics and RocketFUEL token economy
  */
-contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard {
+contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
+    using ECDSA for bytes32;
+
     struct GameSession {
         uint256 score;
         uint256 level;
@@ -64,10 +70,41 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard {
     uint256 public constant MAX_SCORE_PER_SECOND = 2000; // Max score rate
     uint256 public constant MAX_LEVEL = 7; // Maximum level in game
 
-    constructor()
+    /// @dev Field order must match the attestation service exactly.
+    bytes32 private constant RUN_TYPEHASH =
+        keccak256(
+            "Run(address player,uint256 score,uint256 level,uint256 gameTime,uint16 enemiesDestroyed,uint16 rocketsUsed,uint256 nonce,uint256 deadline)"
+        );
+
+    /// @dev Address whose signature this contract will accept for a run.
+    address public runAttestor;
+
+    /// @dev Nonces already claimed, so a signed run cannot be submitted twice.
+    mapping(uint256 => bool) public usedRunNonces;
+
+    event RunAttestorUpdated(address indexed oldAttestor, address indexed newAttestor);
+
+    /**
+     * @dev Point the contract at a different signing key.
+     *
+     * This is the whole reason the attestor is a variable rather than a
+     * constant: if the signing key leaks, rotating it here stops every forged
+     * attestation immediately, without redeploying or migrating balances.
+     */
+    function setRunAttestor(address _attestor) external onlyOwner {
+        require(_attestor != address(0), "Invalid attestor");
+        emit RunAttestorUpdated(runAttestor, _attestor);
+        runAttestor = _attestor;
+    }
+
+    constructor(address _runAttestor)
         ERC20("Rocket Candle Fuel", "RocketFUEL")
         Ownable(msg.sender)
+        EIP712("RocketCandle", "1")
     {
+        require(_runAttestor != address(0), "Invalid attestor");
+        runAttestor = _runAttestor;
+
         // Mint treasury to contract
         _mint(address(this), TREASURY_RESERVE);
         // Mint initial supply to deployer
@@ -82,8 +119,36 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard {
         uint256 _level,
         uint256 _gameTime,
         uint16 _enemiesDestroyed,
-        uint16 _rocketsUsed
+        uint16 _rocketsUsed,
+        uint256 _nonce,
+        uint256 _deadline,
+        bytes calldata _signature
     ) external nonReentrant whenNotPaused {
+        // A player used to be able to report whatever score they liked. Now the
+        // numbers have to arrive countersigned by the attestation service, and
+        // each signature spends a nonce so the same run cannot be claimed twice.
+        require(block.timestamp <= _deadline, "Attestation expired");
+        require(!usedRunNonces[_nonce], "Run already claimed");
+
+        bytes32 digest = _hashTypedDataV4(
+            keccak256(
+                abi.encode(
+                    RUN_TYPEHASH,
+                    msg.sender,
+                    _score,
+                    _level,
+                    _gameTime,
+                    _enemiesDestroyed,
+                    _rocketsUsed,
+                    _nonce,
+                    _deadline
+                )
+            )
+        );
+        require(digest.recover(_signature) == runAttestor, "Bad attestation");
+
+        usedRunNonces[_nonce] = true;
+
         require(_score > 0, "Invalid score");
         require(_level > 0 && _level <= MAX_LEVEL, "Invalid level");
         require(_gameTime >= MIN_GAME_TIME, "Game too short");

@@ -3,12 +3,19 @@ require("dotenv").config();
 
 module.exports = {
   solidity: {
-    version: "0.8.22",
+    // 0.8.24 is the floor for OpenZeppelin's EIP-712 helpers, which the run
+    // attestation depends on.
+    version: "0.8.24",
     settings: {
       optimizer: {
         enabled: true,
         runs: 200,
       },
+      // Left on the compiler default, which is Cancun from 0.8.24. OpenZeppelin
+      // 5.4 needs it - its byte helpers use mcopy - and Somnia supports it:
+      // Coliseum builds the same way with no EVM pin and its contracts are live
+      // on this chain.
+      evmVersion: "cancun",
     },
   },
   networks: {
