@@ -1,4 +1,8 @@
 import { AssetGenerator } from "@/utils/AssetGenerator.js";
+import { MarketDataProvider } from "@/data/MarketDataProvider.js";
+
+/** Market a run uses when the player has not picked one yet. */
+const DEFAULT_MARKET_ID = "somi";
 
 /**
  * PreloadScene - Handles loading of all game assets
@@ -260,7 +264,29 @@ export class PreloadScene extends Phaser.Scene {
     //console.log("🚀 Floating rocket animation created");
   }
 
+  /**
+   * Pull the run's terrain from the exchange while the loading screen is up.
+   *
+   * This is deliberately fire-and-continue: the menu appears on schedule
+   * whether or not the market answered. If it did not, the run falls back to
+   * generated terrain and says so, rather than making the player wait on a
+   * network that may never reply.
+   */
+  loadMarketRun() {
+    const marketId = this.registry.get("selectedMarketId") || DEFAULT_MARKET_ID;
+
+    MarketDataProvider.generateLiveGameLevels(marketId)
+      .then((run) => {
+        this.registry.set("marketRun", run);
+      })
+      .catch(() => {
+        this.registry.set("marketRun", null);
+      });
+  }
+
   create() {
+    this.loadMarketRun();
+
     // Create completion message
     const completeText = this.add
       .text(600, 480, "Ready to Launch! 🎯", {

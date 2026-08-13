@@ -23,7 +23,9 @@ export class GameScene extends Phaser.Scene {
     this.currentLevelAttempts = 0; // Attempts used in current level
     this.gameOver = false; // Flag for game over state
 
-    // Candlestick barrier system - now using MarketDataProvider
+    // Candlestick barriers. Real market terrain is fetched during preload and
+    // picked up in init(); this generated set is the fallback until then.
+    this.marketRun = null;
     this.candlestickData = MarketDataProvider.generateGameLevels();
     this.candlestickSprites = []; // Store generated candlestick sprites
 
@@ -75,6 +77,27 @@ export class GameScene extends Phaser.Scene {
     this.timerDuration = 8000; // 8 seconds in milliseconds
     this.isTimerActive = false;
     this.timerStartTime = 0;
+  }
+
+  /**
+   * Pick up the terrain fetched during preload.
+   *
+   * Runs before create() on every scene start, including restarts, so a replay
+   * uses the same market the run began with rather than silently reverting to
+   * generated terrain.
+   */
+  init() {
+    const run = this.registry.get("marketRun");
+
+    if (run && Array.isArray(run.levels) && run.levels.length) {
+      this.marketRun = run;
+      this.candlestickData = run.levels;
+    } else {
+      this.marketRun = null;
+      this.candlestickData = MarketDataProvider.generateGameLevels();
+    }
+
+    this.maxLevels = this.candlestickData.length;
   }
 
   create() {
@@ -338,6 +361,17 @@ export class GameScene extends Phaser.Scene {
       strokeThickness: 3, // Thick stroke for contrast against any background
     });
 
+    // Terrain provenance (top-center, under the level label)
+    this.marketText = this.add
+      .text(600, 48, "", {
+        fontSize: "14px",
+        fill: "#9aa4c4",
+        fontFamily: "Pixelify Sans, Arial",
+        stroke: "#000000",
+        strokeThickness: 2,
+      })
+      .setOrigin(0.5, 0);
+
     // Level display (top-center)
     this.levelText = this.add
       .text(600, 16, "Level: 3", {
@@ -386,12 +420,53 @@ export class GameScene extends Phaser.Scene {
   /**
    * Update HUD displays
    */
+  /**
+   * One line saying where this terrain came from.
+   *
+   * The point of the whole feature is that the ground is real, so the run has
+   * to be able to prove it: which market, which timeframe, which moment. A
+   * mirrored market says so outright rather than passing itself off as live
+   * trading on this network.
+   *
+   * @returns {string} caption for the HUD
+   */
+  describeCurrentTerrain() {
+    const level = this.candlestickData[this.currentLevel];
+    if (!level) return "";
+
+    if (!this.marketRun || !level.live) {
+      return "Simulated market";
+    }
+
+    const parts = [this.marketRun.market.label, level.interval];
+
+    if (level.window) {
+      parts.push(
+        new Date(level.window.from).toLocaleString([], {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      );
+    }
+
+    if (this.marketRun.mirrored) {
+      parts.push("mirrored from mainnet");
+    }
+
+    return parts.join(" · ");
+  }
+
   updateHUD() {
     if (this.scoreText) {
       this.scoreText.setText(`Score: ${this.score}`);
     }
     if (this.levelText) {
       this.levelText.setText(`Level: ${this.currentLevel + 1}`);
+    }
+    if (this.marketText) {
+      this.marketText.setText(this.describeCurrentTerrain());
     }
     if (this.enemiesText) {
       this.enemiesText.setText(`Enemies: ${this.enemiesRemaining}`);

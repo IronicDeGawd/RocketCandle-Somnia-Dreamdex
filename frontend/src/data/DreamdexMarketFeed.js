@@ -197,12 +197,15 @@ export class DreamdexMarketFeed {
       return { source: "mainnet", mirrored: true };
     }
 
-    // The shortest timeframe is the hardest to satisfy, so it is the honest
-    // test of whether this market has enough life for a full run.
+    // Probe the middle of the ladder rather than the shortest timeframe. A
+    // one-minute gap is normal even on a healthy market - nobody traded for a
+    // minute - and treating that as death would bounce a market in and out of
+    // mirroring between runs. Failing at fifteen minutes is the real signal
+    // that there is not enough trading here to build a run from.
     const probe = await this.fetchLevelCandles({
       symbol: market.symbol,
       source: market.source,
-      interval: INTERVAL_LADDER[0],
+      interval: "15m",
       limit: 11,
     });
 
