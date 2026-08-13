@@ -11,6 +11,7 @@ import {
   useChainId,
   useReadContract,
   useSwitchChain,
+  useSignMessage,
 } from "wagmi";
 import {
   GAME_CONTRACT_ABI,
@@ -18,6 +19,12 @@ import {
   validateScore,
   calculateExpectedReward,
 } from "@/lib/blockchain";
+import {
+  attestRun,
+  getAttestationSession,
+  openAttestationSession,
+  AttestationError,
+} from "@/lib/attestation";
 import Navbar from "@/components/layout/Navbar";
 import NotificationSystem, {
   useNotifications,
@@ -128,6 +135,7 @@ export default function GamePage() {
     isPending,
     error: writeError,
   } = useWriteContract();
+  const { signMessageAsync } = useSignMessage();
   const {
     isLoading: isConfirming,
     isSuccess,
@@ -252,8 +260,6 @@ export default function GamePage() {
         expectedTokens,
       });
 
-      notifyInfo("Wallet Confirmation", "Confirming transaction in wallet...");
-
       console.log("📝 Calling writeContract with args:", {
         address: contractAddress,
         functionName: "submitScore",
@@ -266,16 +272,41 @@ export default function GamePage() {
         ],
       });
 
+      // The contract will not take our word for a score any more - the run has
+      // to be countersigned first. That needs a session, which costs the player
+      // one message signature, not a transaction.
+      notifyInfo("Verifying Run", "Getting your run signed...");
+
+      const session = await getAttestationSession();
+      if (session?.toLowerCase() !== address?.toLowerCase()) {
+        await openAttestationSession(address as string, (message) =>
+          signMessageAsync({ message })
+        );
+      }
+
+      const attestation = await attestRun({
+        score,
+        level: adjustedLevel,
+        gameTime,
+        enemiesDestroyed,
+        rocketsUsed,
+      });
+
+      notifyInfo("Wallet Confirmation", "Confirming transaction in wallet...");
+
       const writeResult = writeContract({
         address: contractAddress as `0x${string}`,
         abi: GAME_CONTRACT_ABI,
         functionName: "submitScore",
         args: [
-          BigInt(score),
-          BigInt(adjustedLevel),
-          BigInt(gameTime),
-          enemiesDestroyed,
-          rocketsUsed,
+          BigInt(attestation.run.score),
+          BigInt(attestation.run.level),
+          BigInt(attestation.run.gameTime),
+          attestation.run.enemiesDestroyed,
+          attestation.run.rocketsUsed,
+          BigInt(attestation.run.nonce),
+          BigInt(attestation.run.deadline),
+          attestation.signature,
         ],
       });
 
@@ -294,6 +325,17 @@ export default function GamePage() {
       );
     } catch (error) {
       console.error("Failed to submit score:", error);
+
+      // The service turning a run away is a different problem from the wallet
+      // refusing a transaction, and the player deserves to be told which.
+      if (error instanceof AttestationError) {
+        notifyError(
+          error.status === 429 ? "Slow Down" : "Run Not Verified",
+          error.message
+        );
+        return;
+      }
+
       const errorMessage = (error as Error)?.message?.includes("rejected")
         ? "Transaction was rejected by user"
         : "Failed to submit to blockchain. Please try again.";
