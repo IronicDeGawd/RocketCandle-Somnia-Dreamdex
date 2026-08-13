@@ -134,6 +134,8 @@ declare global {
       // Absent in practice mode, where a finished run has nowhere to go.
       onGameComplete?: (score: number, level: number) => void;
       practiceMode: boolean;
+      /** Present only when the player is trading. Absent in practice mode. */
+      trading?: import("@/lib/tradingBridge").TradingBridge;
     };
   }
 }

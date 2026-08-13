@@ -31,6 +31,10 @@ import NotificationSystem, {
 } from "@/components/ui/NotificationSystem";
 
 // Dynamically import PhaserGame to avoid SSR issues
+const TradingSetup = dynamic(
+  () => import("@/components/wallet/TradingSetup"),
+  { ssr: false }
+);
 const PhaserGame = dynamic(() => import("@/components/PhaserGame"), {
   ssr: false,
   loading: () => (
@@ -411,6 +415,10 @@ export default function GamePage() {
             <PhaserGame onGameComplete={handleGameComplete} />
           </div>
         </div>
+
+        {/* Turning real trading on. Mounted alongside the game so the bridge
+            it builds is available to the running scenes. */}
+        <TradingSetup symbol="SOMI:USDso" />
         {/* Header */}
         <header className="game-header">
           <div className="game-header-content">

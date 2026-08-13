@@ -209,6 +209,34 @@ export class EndGameScene extends Phaser.Scene {
   }
 
   /**
+   * Close out the run's position, if it still has one.
+   *
+   * Ejecting mid-run already sold it, in which case there is nothing to do -
+   * the bridge simply reports no position and this returns quietly.
+   */
+  async settlePosition() {
+    const bridge =
+      typeof window !== "undefined" ? window.rocketCandleGame?.trading : null;
+    if (!bridge || !bridge.enabled) return;
+
+    try {
+      const result = await bridge.close();
+      if (!result) return;
+
+      const sign = result.pnl >= 0 ? "+" : "";
+      this.showNotification(
+        `💰 Position closed: ${result.proceeds.toFixed(4)} USDso back (${sign}${result.pnl.toFixed(4)})`,
+        result.pnl >= 0 ? "success" : "warning"
+      );
+    } catch {
+      this.showNotification(
+        "⚠️ Could not sell your position - it is still open on the exchange",
+        "warning"
+      );
+    }
+  }
+
+  /**
    * Save score to blockchain with error handling and user feedback
    * @param {number} score - Score to save
    */
@@ -224,6 +252,11 @@ export class EndGameScene extends Phaser.Scene {
         );
         return;
       }
+
+      // Sell the position back before anything else. Leaving a run holding a
+      // position the player has stopped watching is the one outcome worth
+      // avoiding at all costs.
+      this.settlePosition();
 
       if (onGameComplete && typeof onGameComplete === 'function') {
         console.log('🚀 Notifying blockchain of game completion...', {
