@@ -5,18 +5,44 @@
  * against a live testnet run rather than copied hopefully from docs.
  */
 
+/**
+ * The address that stands in for the chain's own coin.
+ *
+ * On the SOMI pool the base side is native and has no token contract, so this
+ * sentinel is used in its place. Knowing which markets are native matters:
+ * their orders cost far more gas.
+ */
+export const NATIVE_SENTINEL =
+  "0x28f34DeFd2b4CB48d9eE6d89f2Be4Bc601694c00" as const;
+
 /** Every market quotes in USDso, and it has 18 decimals on every pool. */
 export const USDSO_ADDRESS =
   "0x9c32F3827A1a99f0cf9B213de8b53eC3d57bb171" as const;
 
 /**
- * Where operator permissions are recorded.
+ * Where operator permissions are recorded, per network.
  *
  * The pool asks this registry, per function, whether a hot key may act for an
  * owner. Revoking here stops the key immediately - no waiting, no redeploy.
+ *
+ * Keyed by network deliberately. Pointing at the wrong one does not fail: the
+ * transaction mines, costs gas, emits nothing and changes nothing, and the
+ * first sign of trouble is orders being refused for no visible reason. Caught
+ * exactly that way during testing, with the mainnet address used on testnet.
  */
-export const OPERATOR_REGISTRY_ADDRESS =
-  "0xE7a190736B6024a4DbafadC04E283075877005ce" as const;
+export const OPERATOR_REGISTRY_BY_CHAIN: Record<number, `0x${string}`> = {
+  5031: "0xE7a190736B6024a4DbafadC04E283075877005ce", // Somnia mainnet
+  50312: "0x15C7e8CE38F021c5b45d098AaD788f63090bF20A", // Shannon testnet
+};
+
+/** The registry for the chain the game is configured against. */
+export function operatorRegistryFor(chainId: number): `0x${string}` {
+  const registry = OPERATOR_REGISTRY_BY_CHAIN[chainId];
+  if (!registry) {
+    throw new Error(`No operator registry known for chain ${chainId}`);
+  }
+  return registry;
+}
 
 /**
  * The two things a game's hot key is ever allowed to do.
@@ -125,6 +151,8 @@ export const DREAMDEX_REST = {
 export interface MarketMeta {
   symbol: string;
   pool: `0x${string}`;
+  /** True when the base side is the chain's own coin rather than a token. */
+  baseIsNative: boolean;
   baseDecimals: number;
   quoteDecimals: number;
   minQuantity: string;
@@ -161,6 +189,8 @@ export async function fetchMarket(
   return {
     symbol: market.symbol,
     pool: market.contract,
+    baseIsNative:
+      String(market.base).toLowerCase() === NATIVE_SENTINEL.toLowerCase(),
     baseDecimals: Number(market.baseDecimals),
     quoteDecimals: Number(market.quoteDecimals),
     minQuantity: String(market.minQuantity),

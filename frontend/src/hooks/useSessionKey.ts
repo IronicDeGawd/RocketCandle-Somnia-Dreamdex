@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useAccount, usePublicClient, useWalletClient } from "wagmi";
+import { useAccount, useChainId, usePublicClient, useWalletClient } from "wagmi";
 import { parseUnits } from "viem";
 
 import {
   ERC20_ABI,
   OPERATOR_REGISTRY_ABI,
-  OPERATOR_REGISTRY_ADDRESS,
   OPERATOR_SELECTORS,
+  operatorRegistryFor,
   SPOT_POOL_ABI,
   USDSO_ADDRESS,
   fetchMarket,
@@ -51,6 +51,7 @@ export interface UseSessionKey {
 
 export function useSessionKey(): UseSessionKey {
   const { address } = useAccount();
+  const chainId = useChainId();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
 
@@ -156,7 +157,7 @@ export function useSessionKey(): UseSessionKey {
         setStep("granting");
         await wait(
           await walletClient.writeContract({
-            address: OPERATOR_REGISTRY_ADDRESS,
+            address: operatorRegistryFor(chainId),
             abi: OPERATOR_REGISTRY_ABI,
             functionName: "setOperatorApprovalForPool",
             args: [
@@ -175,7 +176,7 @@ export function useSessionKey(): UseSessionKey {
         setError((e as Error).message?.split("\n")[0] ?? "Setup failed");
       }
     },
-    [walletClient, publicClient, address, refreshAuthorization]
+    [walletClient, publicClient, address, chainId, refreshAuthorization]
   );
 
   const revoke = useCallback(
@@ -194,7 +195,7 @@ export function useSessionKey(): UseSessionKey {
 
         await publicClient.waitForTransactionReceipt({
           hash: await walletClient.writeContract({
-            address: OPERATOR_REGISTRY_ADDRESS,
+            address: operatorRegistryFor(chainId),
             abi: OPERATOR_REGISTRY_ABI,
             functionName: "setOperatorApprovalForPool",
             args: [
@@ -217,7 +218,7 @@ export function useSessionKey(): UseSessionKey {
         setError((e as Error).message?.split("\n")[0] ?? "Revoke failed");
       }
     },
-    [walletClient, publicClient, address, market, refreshAuthorization]
+    [walletClient, publicClient, address, chainId, market, refreshAuthorization]
   );
 
   /** Take the working capital back out of the vault. Owner only, by design. */
