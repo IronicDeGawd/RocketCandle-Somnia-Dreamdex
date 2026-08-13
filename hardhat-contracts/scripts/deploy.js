@@ -21,11 +21,13 @@ async function main() {
   // The attestation service's signing address. Runs are only accepted when
   // countersigned by this key, so it has to be known at deploy time. It can be
   // rotated later with setRunAttestor if the key is ever compromised.
-  const attestor = process.env.RUN_ATTESTOR_ADDRESS || deployer.address;
-  if (!process.env.RUN_ATTESTOR_ADDRESS) {
-    console.log(
-      "⚠️  RUN_ATTESTOR_ADDRESS not set - using the deployer as attestor.",
-      "Set it to the attestation service's signer before going live."
+  const attestor = process.env.RUN_ATTESTOR_ADDRESS;
+  if (!attestor || !hre.ethers.isAddress(attestor)) {
+    // Deploying without this would produce a contract nobody can submit a
+    // score to, and the mistake would only surface when a player tried.
+    throw new Error(
+      "RUN_ATTESTOR_ADDRESS must be set to the attestation service's signer " +
+        "address (printed by the service at startup)."
     );
   }
   console.log("Run attestor:", attestor);
@@ -51,6 +53,13 @@ async function main() {
   console.log("  Total supply:", hre.ethers.formatEther(totalSupply));
   console.log("  Max supply:", hre.ethers.formatEther(maxSupply));
   console.log("  Owner:", owner);
+  console.log("  Run attestor:", await rocketCandleGame.runAttestor());
+
+  console.log("");
+  console.log("Next steps:");
+  console.log(`  1. server/.env      GAME_CONTRACT_ADDRESS=${contractAddress}`);
+  console.log(`  2. frontend/.env    NEXT_PUBLIC_GAME_CONTRACT_ADDRESS=${contractAddress}`);
+  console.log("  3. Restart the attestation service so it signs for this address.");
 
   // Save deployment info
   const deploymentInfo = {
