@@ -108,6 +108,13 @@ export class GameScene extends Phaser.Scene {
     this.lastTrade = null;
     this.marketBook = null;
     this.breakout = null;
+    this.position = null;
+    this.ejected = false;
+    this.ejecting = false;
+    if (this.positionTimer) {
+      this.positionTimer.remove();
+      this.positionTimer = null;
+    }
     this.marketFeedStatus = "connecting";
     this.explosionSize = this.baseExplosionSize;
   }
@@ -115,6 +122,7 @@ export class GameScene extends Phaser.Scene {
   create() {
     // Listen to the market this run is being played on
     this.startLiveMarketFeed();
+    this.startTrading();
 
     // Set world bounds (1200x600 as updated)
     this.physics.world.setBounds(0, 0, 1200, 600);
@@ -376,6 +384,15 @@ export class GameScene extends Phaser.Scene {
       strokeThickness: 3, // Thick stroke for contrast against any background
     });
 
+    // The player's position, when they have one (top-left, under the score)
+    this.positionText = this.add.text(16, 78, "", {
+      fontSize: "15px",
+      fill: "#9aa4c4",
+      fontFamily: "Pixelify Sans, Arial",
+      stroke: "#000000",
+      strokeThickness: 2,
+    });
+
     // Live market heartbeat (top-center, under the provenance line)
     this.marketTickerText = this.add
       .text(600, 68, "", {
@@ -447,6 +464,130 @@ export class GameScene extends Phaser.Scene {
   /**
    * Update HUD displays
    */
+  /**
+   * Take up the run's position and keep it in view.
+   *
+   * The game never touches a key. It asks the bridge, which lives on the React
+   * side with the wallet, and shows what comes back.
+   */
+  startTrading() {
+    const bridge = this.getTradingBridge();
+    if (!bridge) return;
+
+    // Refresh slowly. Each check is a call to the chain, and the number moving
+    // twice a second would only make the player watch it instead of playing.
+    this.positionTimer = this.time.addEvent({
+      delay: 4000,
+      loop: true,
+      callback: () => this.refreshPosition(),
+    });
+
+    this.refreshPosition();
+    this.setUpEjectKey();
+  }
+
+  /** The trading bridge, if this run has one. Practice runs do not. */
+  getTradingBridge() {
+    if (typeof window === "undefined") return null;
+    const bridge = window.rocketCandleGame?.trading;
+    return bridge && bridge.enabled ? bridge : null;
+  }
+
+  /** Ask what the position is worth and put it on screen. */
+  async refreshPosition() {
+    const bridge = this.getTradingBridge();
+    if (!bridge) return;
+
+    try {
+      this.position = await bridge.snapshot();
+    } catch {
+      // A missed price check is not worth interrupting a run over; the next
+      // one is four seconds away.
+      return;
+    }
+
+    this.updatePositionText();
+  }
+
+  /**
+   * E ejects: sell the position, keep playing.
+   *
+   * Deliberately does not end the run. The money decision and the game
+   * decision are different decisions, and keeping them apart is what teaches
+   * a first-timer what holding a position actually means.
+   */
+  setUpEjectKey() {
+    this.input.keyboard.on("keydown-E", async () => {
+      const bridge = this.getTradingBridge();
+      if (!bridge || !this.position?.open || this.ejecting) return;
+
+      this.ejecting = true;
+      this.showEjectNotice("Selling your position...");
+
+      try {
+        const result = await bridge.close();
+        this.ejected = true;
+        this.position = await bridge.snapshot();
+        this.updatePositionText();
+
+        if (result) {
+          const sign = result.pnl >= 0 ? "+" : "";
+          this.showEjectNotice(
+            `Ejected - you keep ${result.proceeds.toFixed(4)} USDso (${sign}${result.pnl.toFixed(4)})`
+          );
+        }
+      } catch {
+        this.showEjectNotice("Could not sell right now - still holding");
+      } finally {
+        this.ejecting = false;
+      }
+    });
+  }
+
+  /** @param {string} message */
+  showEjectNotice(message) {
+    const notice = this.add
+      .text(600, 150, message, {
+        fontSize: "18px",
+        fill: "#ffd166",
+        fontFamily: "Pixelify Sans, Arial",
+        stroke: "#000000",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5)
+      .setDepth(1000);
+
+    this.tweens.add({
+      targets: notice,
+      alpha: 0,
+      y: 120,
+      duration: 3000,
+      ease: "Quad.easeOut",
+      onComplete: () => notice.destroy(),
+    });
+  }
+
+  /** Show the stake, what it is worth now, and the way out. */
+  updatePositionText() {
+    if (!this.positionText) return;
+
+    if (!this.position || !this.position.open) {
+      this.positionText.setText(
+        this.ejected ? "Position closed - playing on" : ""
+      );
+      this.positionText.setColor("#9aa4c4");
+      return;
+    }
+
+    const { stake, value, pnl, pnlPct } = this.position;
+    const sign = pnl >= 0 ? "+" : "";
+
+    this.positionText.setText(
+      `Staked ${stake.toFixed(3)} USDso  ·  now ${value.toFixed(3)}  ·  ${sign}${pnl.toFixed(4)} (${sign}${pnlPct.toFixed(2)}%)   [E] eject`
+    );
+    this.positionText.setColor(pnl >= 0 ? "#4ade80" : "#f87171");
+  }
+
   /**
    * Start listening to the market the player is standing on.
    *
