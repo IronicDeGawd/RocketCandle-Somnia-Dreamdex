@@ -129,6 +129,33 @@ export async function openPosition(
 }
 
 /**
+ * Buy more of the same, adding to an open position.
+ *
+ * The new average entry is worked out from total cost over total quantity, so
+ * a top-up at a worse price honestly drags the entry up rather than being
+ * quietly ignored.
+ */
+export async function addToPosition(
+  clients: TradingClients,
+  market: MarketMeta,
+  owner: `0x${string}`,
+  position: Position,
+  extraUsdso: number
+): Promise<Position> {
+  const added = await openPosition(clients, market, owner, extraUsdso);
+
+  const quantity = position.quantity + added.quantity;
+  const costUsdso = position.costUsdso + added.costUsdso;
+
+  return {
+    ...position,
+    quantity,
+    costUsdso,
+    entryPrice: costUsdso / quantity,
+  };
+}
+
+/**
  * Sell the position back.
  *
  * Used both when a run ends and when the player ejects early - they are the
