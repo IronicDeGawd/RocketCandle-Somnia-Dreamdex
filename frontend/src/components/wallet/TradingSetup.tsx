@@ -27,9 +27,19 @@ export interface TradingSetupProps {
 export default function TradingSetup({ symbol }: TradingSetupProps) {
   const { sessionKey, authorized, step, error, enable, revoke, withdrawAll } =
     useSessionKey();
-  const { bridge, refresh } = useTradingSession(symbol);
+  const { bridge, snapshot, refresh } = useTradingSession(symbol);
   const [amount, setAmount] = useState("2");
   const [roundTripCost, setRoundTripCost] = useState<number | null>(null);
+  const [stopTerms, setStopTerms] = useState<{
+    deposit: number;
+    slippageBps: number;
+  } | null>(null);
+  const [stopBusy, setStopBusy] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
+  const [stopResting, setStopResting] = useState(false);
+
+  /** How far the position may fall before it sells itself. */
+  const FLOOR_DROP_PCT = 10;
 
   // Show the spread cost before the player commits, not after.
   useEffect(() => {
@@ -49,6 +59,57 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
       cancelled = true;
     };
   }, [bridge, amount]);
+
+  // What a resting stop costs, read from the exchange rather than assumed - the
+  // deposit is set by the registry admin and can change between runs.
+  useEffect(() => {
+    let cancelled = false;
+    if (!bridge?.canRestStop) return;
+
+    bridge.stopTerms().then((terms) => {
+      if (!cancelled) setStopTerms(terms);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge]);
+
+  // A stop only makes sense while there is a position to protect, and the
+  // exchange clears it as soon as the position closes.
+  useEffect(() => {
+    if (!snapshot?.open) setStopResting(false);
+  }, [snapshot?.open]);
+
+  const handleRestStop = useCallback(async () => {
+    if (!bridge) return;
+    setStopBusy(true);
+    setStopError(null);
+
+    try {
+      const armed = await bridge.restStop(FLOOR_DROP_PCT);
+      setStopResting(Boolean(armed));
+      if (!armed) setStopError("There is no open position to protect yet.");
+    } catch (e) {
+      setStopError((e as Error).message ?? "Could not rest the stop");
+    } finally {
+      setStopBusy(false);
+    }
+  }, [bridge]);
+
+  const handleLiftStop = useCallback(async () => {
+    if (!bridge) return;
+    setStopBusy(true);
+    setStopError(null);
+
+    try {
+      const lifted = await bridge.liftStop();
+      if (lifted) setStopResting(false);
+      else setStopError("The stop could not be lifted — try again.");
+    } finally {
+      setStopBusy(false);
+    }
+  }, [bridge]);
 
   const handleEnable = useCallback(async () => {
     await enable(symbol, amount);
@@ -90,9 +151,10 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
               Three signatures now, then none — no wallet popups between shots.
             </li>
             <li>
-              If your position falls 10%, the game sells it and you play on.
-              That floor is watched here, in this page — close the tab and it
-              stops watching.
+              If your position falls {FLOOR_DROP_PCT}%, it sells and you play
+              on. This page watches that floor while it is open, and once a
+              position exists you can also rest the same floor on the exchange
+              so it holds even with the tab closed.
             </li>
             <li>
               Trading fees are zero. The only cost is the gap between the buy
@@ -115,8 +177,46 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
             and nothing else.
           </p>
 
+          {bridge?.canRestStop && snapshot?.open ? (
+            <div className="trading-setup-stop">
+              {stopResting ? (
+                <>
+                  <p className="trading-setup-ready">
+                    A stop is resting on the exchange. If the price falls{" "}
+                    {FLOOR_DROP_PCT}% below what you paid, your position sells
+                    itself — whether or not this page is open.
+                  </p>
+                  <button onClick={handleLiftStop} disabled={stopBusy}>
+                    {stopBusy ? "Lifting..." : "Lift the stop"}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="trading-setup-note">
+                    Rest your {FLOOR_DROP_PCT}% floor on the exchange itself and
+                    it keeps working with the tab closed. Costs one wallet
+                    signature
+                    {stopTerms
+                      ? ` and a ${stopTerms.deposit} STT deposit, refunded when you lift it`
+                      : ""}
+                    . It sells at whatever the book offers, within{" "}
+                    {stopTerms ? stopTerms.slippageBps / 100 : 5}% of the
+                    trigger.
+                  </p>
+                  <button onClick={handleRestStop} disabled={stopBusy}>
+                    {stopBusy ? "Resting the stop..." : "Rest my stop on chain"}
+                  </button>
+                </>
+              )}
+              {stopError ? (
+                <p className="trading-setup-error">{stopError}</p>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="trading-setup-actions">
             <button onClick={() => withdrawAll(symbol, amount)} disabled={busy}>
+
               Withdraw {amount} USDso
             </button>
             <button onClick={() => revoke(symbol)} disabled={busy}>

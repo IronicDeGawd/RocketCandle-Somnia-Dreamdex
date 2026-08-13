@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, useWalletClient } from "wagmi";
 
 import { fetchMarket, type MarketMeta } from "@/lib/dreamdex";
 import { createTradingClients } from "@/lib/orders";
@@ -22,6 +22,9 @@ import {
  */
 export function useTradingSession(symbol: string) {
   const { address } = useAccount();
+  // Only ever used to rest a stop on the exchange. Every trade during a run is
+  // signed by the session key instead, so no prompt interrupts play.
+  const { data: ownerWallet } = useWalletClient();
   const [bridge, setBridge] = useState<TradingBridge | null>(null);
   const [snapshot, setSnapshot] = useState<TradingSnapshot | null>(null);
   const [market, setMarket] = useState<MarketMeta | null>(null);
@@ -49,6 +52,7 @@ export function useTradingSession(symbol: string) {
           clients,
           market: meta,
           owner: address,
+          ownerWallet,
           onChange: setSnapshot,
         })
       );
@@ -59,7 +63,7 @@ export function useTradingSession(symbol: string) {
     } finally {
       buildingRef.current = false;
     }
-  }, [address, symbol]);
+  }, [address, ownerWallet, symbol]);
 
   useEffect(() => {
     build();
