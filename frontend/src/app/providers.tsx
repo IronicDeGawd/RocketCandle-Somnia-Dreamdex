@@ -13,7 +13,6 @@ import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAccount, useConnect, useDisconnect, useReadContract } from "wagmi";
 import { wagmiConfig } from "@/lib/wagmi";
-import { sdk } from "@farcaster/miniapp-sdk";
 
 interface User {
   address: string;
@@ -66,10 +65,6 @@ function InnerProviders({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [playerStats, setPlayerStats] = useState<PlayerStats | null>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [farcasterUser, setFarcasterUser] = useState<{
-    fid: number;
-    username?: string;
-  } | null>(null);
 
   // Get player stats from blockchain using wagmi
   const { data: playerStatsData } = useReadContract({
@@ -84,27 +79,7 @@ function InnerProviders({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    const initFarcaster = async () => {
-      try {
-        // Initialize Farcaster SDK and get context
-        await sdk.actions.ready();
-        const context = await sdk.context;
-
-        if (context?.user) {
-          setFarcasterUser({
-            fid: context.user.fid,
-            username: context.user.username || context.user.displayName,
-          });
-        }
-      } catch (error) {
-        console.log("Farcaster context not available:", error);
-        // This is fine - we'll fall back to wallet-only mode
-      }
-
-      setIsLoading(false);
-    };
-
-    initFarcaster();
+    setIsLoading(false);
   }, []);
 
   // Sync wagmi wallet state with local state
@@ -156,15 +131,13 @@ function InnerProviders({ children }: { children: ReactNode }) {
       // Player stats are now auto-loaded via wagmi hook
 
       // Set authentication state when wallet is connected via wagmi
-      const displayName =
-        farcasterUser?.username ||
-        `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
-        
+      const displayName = `${walletAddress.slice(0, 6)}...${walletAddress.slice(
+        -4
+      )}`;
+
       setUser({
         address: walletAddress,
         displayName,
-        fid: farcasterUser?.fid,
-        username: farcasterUser?.username,
       });
       setIsAuthenticated(true);
       
@@ -180,22 +153,16 @@ function InnerProviders({ children }: { children: ReactNode }) {
       setPlayerStats(null);
       console.log("User disconnected");
     }
-  }, [walletAddress, farcasterUser]);
+  }, [walletAddress]);
 
   const connectWallet = useCallback(async () => {
     try {
       if (!isLoading) setIsLoading(true);
 
       // Try to connect using wagmi first
-      const farcasterConnector = connectors.find(
-        (c) => c.name === "Farcaster Miniapp"
-      );
       const injectedConnector = connectors.find((c) => c.name === "Injected");
 
-      if (farcasterConnector) {
-        console.log("Connecting with Farcaster connector");
-        connect({ connector: farcasterConnector });
-      } else if (injectedConnector) {
+      if (injectedConnector) {
         console.log("Connecting with injected connector");
         connect({ connector: injectedConnector });
       } else {
