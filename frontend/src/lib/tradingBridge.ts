@@ -1,6 +1,7 @@
 import type { MarketMeta } from "@/lib/dreamdex";
 import type { TradingClients } from "@/lib/orders";
 import {
+  addToPosition,
   closePosition,
   estimateRoundTripCost,
   markToMarket,
@@ -36,6 +37,8 @@ export interface TradingBridge {
   symbol: string;
   /** Buy in. Resolves once the position is really open. */
   open: (stakeUsdso: number) => Promise<TradingSnapshot | null>;
+  /** Add to the position. More exposure, more firepower, more risk. */
+  addExposure: (extraUsdso: number) => Promise<TradingSnapshot | null>;
   /** Sell back. Used both by ejecting and by finishing a run. */
   close: () => Promise<{ pnl: number; proceeds: number } | null>;
   /** Value the position without touching it. */
@@ -99,6 +102,30 @@ export function buildTradingBridge({
         value: position.costUsdso,
         pnl: 0,
         pnlPct: 0,
+        orderCount,
+      });
+    },
+
+    async addExposure(extraUsdso) {
+      if (!position) return null;
+
+      position = await addToPosition(
+        clients,
+        market,
+        owner,
+        position,
+        extraUsdso
+      );
+      orderCount += 1;
+
+      const marked = await markToMarket(clients, market, position);
+
+      return publish({
+        open: true,
+        stake: position.costUsdso,
+        value: marked?.value ?? position.costUsdso,
+        pnl: marked?.pnlUsdso ?? 0,
+        pnlPct: marked?.pnlPct ?? 0,
         orderCount,
       });
     },

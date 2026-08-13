@@ -42,6 +42,9 @@ export class GameScene extends Phaser.Scene {
     this.explosionSize = 70; // Explosion radius in pixels - increased from 120 for even better area coverage
     this.baseExplosionSize = 70; // Radius on a healthy book, before market conditions
     this.maxFragilityBonus = 0.5; // A vanished book reaches half again as far
+    this.maxExposureBonus = 0.6; // A tripled position reaches 60% further
+    this.maxTotalReach = 2.0; // Both bonuses together still stop here
+    this.exposureStep = 0.5; // USDso added per top-up
     this.rocketTrail = []; // Store trail points for visual effect
 
     // Trajectory prediction properties
@@ -109,8 +112,10 @@ export class GameScene extends Phaser.Scene {
     this.marketBook = null;
     this.breakout = null;
     this.position = null;
+    this.openingStake = 0;
     this.ejected = false;
     this.ejecting = false;
+    this.buyingFirepower = false;
     if (this.positionTimer) {
       this.positionTimer.remove();
       this.positionTimer = null;
@@ -384,6 +389,16 @@ export class GameScene extends Phaser.Scene {
       strokeThickness: 3, // Thick stroke for contrast against any background
     });
 
+    // The zero-fee counter. This is the line the whole demo exists to earn:
+    // a game can fire order after order only because nobody takes a cut.
+    this.feeCounterText = this.add.text(16, 98, "", {
+      fontSize: "14px",
+      fill: "#4ade80",
+      fontFamily: "Pixelify Sans, Arial",
+      stroke: "#000000",
+      strokeThickness: 2,
+    });
+
     // The player's position, when they have one (top-left, under the score)
     this.positionText = this.add.text(16, 78, "", {
       fontSize: "15px",
@@ -484,6 +499,7 @@ export class GameScene extends Phaser.Scene {
 
     this.refreshPosition();
     this.setUpEjectKey();
+    this.setUpFirepowerKey();
   }
 
   /** The trading bridge, if this run has one. Practice runs do not. */
@@ -500,6 +516,10 @@ export class GameScene extends Phaser.Scene {
 
     try {
       this.position = await bridge.snapshot();
+      if (this.position?.open && !this.openingStake) {
+        this.openingStake = this.position.stake;
+      }
+      this.recalculateBlastRadius();
     } catch {
       // A missed price check is not worth interrupting a run over; the next
       // one is four seconds away.
@@ -507,6 +527,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.updatePositionText();
+    this.updateFeeCounter();
   }
 
   /**
@@ -529,6 +550,7 @@ export class GameScene extends Phaser.Scene {
         this.ejected = true;
         this.position = await bridge.snapshot();
         this.updatePositionText();
+        this.updateFeeCounter();
 
         if (result) {
           const sign = result.pnl >= 0 ? "+" : "";
@@ -540,6 +562,38 @@ export class GameScene extends Phaser.Scene {
         this.showEjectNotice("Could not sell right now - still holding");
       } finally {
         this.ejecting = false;
+      }
+    });
+  }
+
+  /**
+   * F buys firepower: add to the position, and the rocket hits harder.
+   *
+   * Opt-in, never automatic. Tying exposure to aim was rejected early on -
+   * aim is dictated by where the enemies are, so the trade would be noise the
+   * player cannot control, and a payout swinging on noise is a slot machine.
+   */
+  setUpFirepowerKey() {
+    this.input.keyboard.on("keydown-F", async () => {
+      const bridge = this.getTradingBridge();
+      if (!bridge || !this.position?.open || this.buyingFirepower) return;
+
+      this.buyingFirepower = true;
+      this.showEjectNotice(`Buying firepower - staking ${this.exposureStep} more...`);
+
+      try {
+        this.position = await bridge.addExposure(this.exposureStep);
+        this.recalculateBlastRadius();
+        this.updatePositionText();
+        this.updateFeeCounter();
+        this.updateMarketTicker();
+        this.showEjectNotice(
+          `Bigger position, bigger blast - radius now ${this.explosionSize}px`
+        );
+      } catch {
+        this.showEjectNotice("Could not add to your position");
+      } finally {
+        this.buyingFirepower = false;
       }
     });
   }
@@ -567,6 +621,32 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * Orders placed this run, and what they cost in fees.
+   *
+   * The fee figure is not a placeholder waiting to be filled in. It is zero
+   * because the exchange charges nothing, on either side, on every pair.
+   */
+  updateFeeCounter() {
+    if (!this.feeCounterText) return;
+
+    const bridge = this.getTradingBridge();
+    if (!bridge) {
+      this.feeCounterText.setText("");
+      return;
+    }
+
+    const orders = bridge.ordersPlaced();
+    if (!orders) {
+      this.feeCounterText.setText("");
+      return;
+    }
+
+    this.feeCounterText.setText(
+      `orders placed: ${orders}  ·  fees paid: $0.00`
+    );
+  }
+
   /** Show the stake, what it is worth now, and the way out. */
   updatePositionText() {
     if (!this.positionText) return;
@@ -583,7 +663,7 @@ export class GameScene extends Phaser.Scene {
     const sign = pnl >= 0 ? "+" : "";
 
     this.positionText.setText(
-      `Staked ${stake.toFixed(3)} USDso  ·  now ${value.toFixed(3)}  ·  ${sign}${pnl.toFixed(4)} (${sign}${pnlPct.toFixed(2)}%)   [E] eject`
+      `Staked ${stake.toFixed(3)} USDso  ·  now ${value.toFixed(3)}  ·  ${sign}${pnl.toFixed(4)} (${sign}${pnlPct.toFixed(2)}%)   [E] eject  [F] +${this.exposureStep} firepower`
     );
     this.positionText.setColor(pnl >= 0 ? "#4ade80" : "#f87171");
   }
@@ -841,11 +921,32 @@ export class GameScene extends Phaser.Scene {
    */
   onMarketBook(book) {
     this.marketBook = book;
-
-    const reach = 1 + book.fragility * this.maxFragilityBonus;
-    this.explosionSize = Math.round(this.baseExplosionSize * reach);
-
+    this.recalculateBlastRadius();
     this.updateMarketTicker();
+  }
+
+  /**
+   * How far a rocket reaches.
+   *
+   * Two things widen it: a thin market, because a fragile book means things
+   * break easily, and a bigger position, because that is what the player paid
+   * for. Capped together, so stacking both cannot trivialise a level.
+   */
+  recalculateBlastRadius() {
+    const fragility = this.marketBook ? this.marketBook.fragility : 0;
+    const fragilityReach = 1 + fragility * this.maxFragilityBonus;
+
+    // Exposure is measured against the stake the run opened with, so buying
+    // firepower means genuinely putting more at risk than you started with.
+    let exposureReach = 1;
+    if (this.position?.open && this.openingStake > 0) {
+      const multiple = this.position.stake / this.openingStake;
+      exposureReach =
+        1 + Math.min(1, (multiple - 1) / 2) * this.maxExposureBonus;
+    }
+
+    const reach = Math.min(this.maxTotalReach, fragilityReach * exposureReach);
+    this.explosionSize = Math.round(this.baseExplosionSize * reach);
   }
 
   /**
