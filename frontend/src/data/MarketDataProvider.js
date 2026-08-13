@@ -1,6 +1,15 @@
+import {
+  DreamdexMarketFeed,
+  LEVEL_TIMEFRAMES,
+} from "./DreamdexMarketFeed.js";
+
 /**
  * MarketDataProvider - Provides candlestick market data for game levels
- * Supports both static (fake) data and live market data integration
+ *
+ * Levels are built from real DreamDEX trading history when it is available, and
+ * from the synthetic generator when it is not. The synthetic path is kept as a
+ * fallback rather than deleted: a network blip must never leave a player staring
+ * at an empty screen.
  */
 export class MarketDataProvider {
   /**
@@ -52,21 +61,23 @@ export class MarketDataProvider {
   ];
 
   /**
-   * Generate all game levels with candlestick data
-   * @param {boolean} useLiveData - Whether to use live market data (future feature)
+   * Generate all game levels from synthetic data.
+   *
+   * This is the offline fallback. For real market terrain use
+   * generateLiveGameLevels, which is asynchronous because it has to ask the
+   * exchange.
+   *
    * @returns {Array} Array of level objects with candlestick data
    */
-  static generateGameLevels(useLiveData = false) {
-    // //console.log(
-    //   `📊 Generating ${this.LEVEL_CONFIGURATIONS.length} game levels`
-    // );
-
+  static generateGameLevels() {
     return this.LEVEL_CONFIGURATIONS.map((config, index) => ({
       ...config,
       levelIndex: index,
-      candlesticks: useLiveData
-        ? this.fetchLiveMarketData(config) // Future implementation
-        : this.generateStaticOHLCData(config.candleCount, config.marketParams),
+      live: false,
+      candlesticks: this.generateStaticOHLCData(
+        config.candleCount,
+        config.marketParams
+      ),
     }));
   }
 
@@ -161,61 +172,133 @@ export class MarketDataProvider {
   }
 
   /**
-   * Generate candlestick data for a specific level
+   * Generate synthetic candlestick data for a specific level
    * @param {number} levelIndex - Index of the level
-   * @param {boolean} useLiveData - Whether to use live data
    * @returns {Array} Candlestick data for the level
    */
-  static generateLevelData(levelIndex, useLiveData = false) {
+  static generateLevelData(levelIndex) {
     const config = this.getLevelConfig(levelIndex);
-
-    if (useLiveData) {
-      return this.fetchLiveMarketData(config);
-    } else {
-      return this.generateStaticOHLCData(
-        config.candleCount,
-        config.marketParams
-      );
-    }
-  }
-
-  /**
-   * Fetch live market data (Future implementation)
-   * This method will be implemented when integrating with real market APIs
-   * @param {object} config - Level configuration
-   * @returns {Promise<Array>} Promise resolving to candlestick data
-   */
-  static async fetchLiveMarketData(config) {
-    //console.log(`🔄 Live market data not implemented yet for ${config.name}`);
-
-    // For now, return static data as fallback
     return this.generateStaticOHLCData(config.candleCount, config.marketParams);
-
-    // Future implementation will look like:
-    /*
-    try {
-      const response = await fetch(`/api/market-data?timeframe=15m&count=${config.candleCount}`);
-      const data = await response.json();
-      return this.normalizeMarketData(data, config);
-    } catch (error) {
-      console.error('Failed to fetch live market data:', error);
-      // Fallback to static data
-      return this.generateStaticOHLCData(config.candleCount, config.marketParams);
-    }
-    */
   }
 
   /**
-   * Normalize live market data to game format (Future implementation)
-   * @param {Array} rawData - Raw market data from API
-   * @param {object} config - Level configuration
-   * @returns {Array} Normalized candlestick data
+   * Name a level after what the market actually did.
+   *
+   * The static names belong to the synthetic dials, where a level called "Crash
+   * and Burn" was crashing by construction. Real history has its own opinion, so
+   * the title is read off the candles instead - a flat market must never be
+   * presented as a crash, or the whole "this is real trading" claim falls over.
+   *
+   * @param {object} analysis - output of getMarketAnalysis
+   * @returns {object} {name, difficulty}
    */
-  static normalizeMarketData(rawData, _config) {
-    // Future implementation for converting real market data
-    // to game-compatible OHLC format
-    //console.log(`🔄 Market data normalization not implemented yet`);
-    return rawData;
+  static describeLevel(analysis) {
+    const { trend, volatilityLevel } = analysis;
+    const wild = volatilityLevel === "high" || volatilityLevel === "extreme";
+
+    let name;
+    if (trend === "bullish") {
+      name = wild ? "Volatile Bull Run" : "Bull Market Basics";
+    } else if (trend === "bearish") {
+      if (volatilityLevel === "extreme") name = "Trading Apocalypse";
+      else if (volatilityLevel === "high") name = "Crash and Burn";
+      else name = "Bear Market Challenge";
+    } else {
+      name = wild ? "Market Chaos" : "Sideways Consolidation";
+    }
+
+    const difficulty = {
+      low: "Easy",
+      medium: "Medium",
+      high: "Hard",
+      extreme: "Extreme",
+    }[volatilityLevel];
+
+    return { name, difficulty };
+  }
+
+  /**
+   * Build every level for a run out of one market's real trading history.
+   *
+   * Each level takes a longer timeframe than the last, so difficulty rises with
+   * the size of the moves rather than with an invented difficulty dial. Any
+   * level the exchange cannot supply falls back to synthetic data on its own,
+   * so one quiet stretch of the market cannot sink a whole run.
+   *
+   * @param {string} marketId - id from GAME_MARKETS
+   * @returns {Promise<object>} {market, mirrored, source, levels}
+   */
+  static async generateLiveGameLevels(marketId) {
+    const market = DreamdexMarketFeed.getMarket(marketId);
+    let resolved;
+
+    try {
+      resolved = await DreamdexMarketFeed.resolveMarketSource(market);
+    } catch {
+      // Cannot reach the exchange at all - the whole run is synthetic, and the
+      // caller is told so rather than being handed fake data as if it were real.
+      return {
+        market,
+        source: null,
+        mirrored: false,
+        live: false,
+        levels: this.generateGameLevels(),
+      };
+    }
+
+    const levels = await Promise.all(
+      this.LEVEL_CONFIGURATIONS.map(async (config, index) => {
+        const timeframe = LEVEL_TIMEFRAMES[index] || LEVEL_TIMEFRAMES[0];
+        let fetched = null;
+
+        try {
+          fetched = await DreamdexMarketFeed.fetchLevelCandles({
+            symbol: market.symbol,
+            source: resolved.source,
+            interval: timeframe.interval,
+            limit: config.candleCount,
+            windowsBack: timeframe.windowsBack,
+          });
+        } catch {
+          fetched = null;
+        }
+
+        if (!fetched) {
+          return {
+            ...config,
+            levelIndex: index,
+            live: false,
+            interval: timeframe.interval,
+            window: null,
+            candlesticks: this.generateStaticOHLCData(
+              config.candleCount,
+              config.marketParams
+            ),
+          };
+        }
+
+        const analysis = this.getMarketAnalysis(fetched.candles);
+
+        return {
+          ...config,
+          ...(analysis ? this.describeLevel(analysis) : {}),
+          levelIndex: index,
+          live: true,
+          interval: fetched.interval,
+          zoomedOut: fetched.zoomedOut,
+          window: DreamdexMarketFeed.describeWindow(fetched.candles),
+          candlesticks: fetched.candles,
+        };
+      })
+    );
+
+    return {
+      market,
+      source: resolved.source,
+      mirrored: resolved.mirrored,
+      live: levels.some((level) => level.live),
+      levels,
+    };
   }
 
   /**
@@ -257,15 +340,46 @@ export class MarketDataProvider {
     const last = candlesticks[candlesticks.length - 1];
     const priceChange = ((last.close - first.open) / first.open) * 100;
 
-    let trend = "sideways";
-    if (priceChange > 2) trend = "bullish";
-    else if (priceChange < -2) trend = "bearish";
-
     // Calculate average volatility
     const avgVolatility =
       candlesticks.reduce((sum, candle) => {
         return sum + (candle.high - candle.low) / candle.close;
       }, 0) / candlesticks.length;
+
+    // Is this a trend, or just wandering?
+    //
+    // A fixed percentage cutoff cannot answer that across timeframes: 0.5% in a
+    // minute is a stampede, 0.5% in a day is nothing. So compare the net move
+    // against how far this market wanders anyway - a price bouncing randomly
+    // drifts roughly with the square root of the number of steps, so anything
+    // beyond that is real direction rather than noise.
+    //
+    // The step size is measured close-to-close, deliberately. A candle's full
+    // high-to-low sweep counts motion in both directions, which overstates how
+    // far the price actually travelled and buries genuine trends.
+    let stepSum = 0;
+    for (let i = 1; i < candlesticks.length; i++) {
+      const previous = candlesticks[i - 1].close;
+      stepSum += Math.abs(candlesticks[i].close - previous) / previous;
+    }
+    const meanStep = stepSum / Math.max(1, candlesticks.length - 1);
+
+    const netMove = (last.close - first.open) / first.open;
+    const expectedDrift =
+      meanStep * Math.sqrt(candlesticks.length) || Number.EPSILON;
+    const trendSignal = netMove / expectedDrift;
+
+    // A market that has barely moved in absolute terms is flat no matter what
+    // the ratio says - this keeps a stablecoin's rounding noise from being
+    // reported as a trend.
+    const FLAT_THRESHOLD = 0.0025; // 0.25%
+    const TREND_THRESHOLD = 1;
+
+    let trend = "sideways";
+    if (Math.abs(netMove) >= FLAT_THRESHOLD) {
+      if (trendSignal > TREND_THRESHOLD) trend = "bullish";
+      else if (trendSignal < -TREND_THRESHOLD) trend = "bearish";
+    }
 
     let volatilityLevel = "low";
     if (avgVolatility > 0.05) volatilityLevel = "extreme";
