@@ -24,14 +24,22 @@ export class DreamdexLiveFeed {
    * @param {string} options.source - "testnet" | "mainnet"
    * @param {Function} [options.onTrade] - called with a normalized trade
    * @param {Function} [options.onCandle] - called when a candle updates
+   * @param {Function} [options.onBook] - called when the order book shifts
    * @param {Function} [options.onStatus] - called with "live" | "connecting" | "offline"
    */
-  constructor({ symbol, source, onTrade, onCandle, onStatus }) {
+  constructor({ symbol, source, onTrade, onCandle, onBook, onStatus }) {
     this.symbol = symbol;
     this.source = source;
     this.onTrade = onTrade || (() => {});
     this.onCandle = onCandle || (() => {});
+    this.onBook = onBook || (() => {});
     this.onStatus = onStatus || (() => {});
+
+    // Best prices on each side, kept as maps so incremental updates can
+    // replace a level or remove it when its quantity goes to zero.
+    this.bids = new Map();
+    this.asks = new Map();
+    this.recentDepths = [];
 
     this.socket = null;
     this.closed = false;
@@ -70,6 +78,11 @@ export class DreamdexLiveFeed {
         operation: "subscribe",
         channel: "ohlcv",
         params: { symbol: this.symbol, timeframe: "1m" },
+      });
+      this.send({
+        operation: "subscribe",
+        channel: "orderbook",
+        params: { symbols: [this.symbol] },
       });
     };
 
@@ -123,6 +136,19 @@ export class DreamdexLiveFeed {
       return;
     }
 
+    if (message.channel === "orderbook") {
+      if (message.type === "snapshot") {
+        this.bids.clear();
+        this.asks.clear();
+      }
+      if (message.type === "snapshot" || message.type === "update") {
+        this.applyBookSide(this.bids, message.bids);
+        this.applyBookSide(this.asks, message.asks);
+        this.emitBook();
+      }
+      return;
+    }
+
     if (message.channel === "ohlcv" && message.type === "update" && message.candle) {
       const candle = message.candle;
       this.onCandle({
@@ -134,6 +160,67 @@ export class DreamdexLiveFeed {
         timestamp: Number(candle.timestamp) || 0,
       });
     }
+  }
+
+  /**
+   * Fold one side of an order book update into what we already hold.
+   *
+   * A level with zero quantity means that price has been taken away, not that
+   * somebody is offering nothing there.
+   *
+   * @param {Map} side - the bids or asks we are tracking
+   * @param {Array} levels - levels from the exchange, may be undefined
+   */
+  applyBookSide(side, levels) {
+    if (!Array.isArray(levels)) return;
+
+    levels.forEach((level) => {
+      const price = Number(level.price);
+      const quantity = Number(level.quantity);
+      if (!Number.isFinite(price)) return;
+
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        side.delete(price);
+      } else {
+        side.set(price, quantity);
+      }
+    });
+  }
+
+  /**
+   * Report how healthy the book looks right now.
+   *
+   * Two things matter to the game. The gap between the best buy and best sell
+   * says how expensive it is to trade at all. The money resting at those best
+   * prices says how much the market can absorb before it moves. When that
+   * money thins out, the market is fragile - and the game makes fragility
+   * felt rather than explained.
+   */
+  emitBook() {
+    if (!this.bids.size || !this.asks.size) return;
+
+    const bestBid = Math.max(...this.bids.keys());
+    const bestAsk = Math.min(...this.asks.keys());
+    if (!(bestBid > 0) || !(bestAsk > 0) || bestAsk < bestBid) return;
+
+    const mid = (bestBid + bestAsk) / 2;
+    const spreadPct = ((bestAsk - bestBid) / mid) * 100;
+    const touchDepth =
+      this.bids.get(bestBid) * bestBid + this.asks.get(bestAsk) * bestAsk;
+
+    if (!Number.isFinite(touchDepth) || touchDepth <= 0) return;
+
+    this.recentDepths.push(touchDepth);
+    if (this.recentDepths.length > 60) this.recentDepths.shift();
+
+    const sorted = [...this.recentDepths].sort((a, b) => a - b);
+    const typical = sorted[Math.floor(sorted.length / 2)] || touchDepth;
+
+    // 0 means the book is as deep as usual or better; 1 means it has all but
+    // vanished. Clamped so a single odd reading cannot swing the game wildly.
+    const fragility = Math.max(0, Math.min(1, 1 - touchDepth / typical));
+
+    this.onBook({ bestBid, bestAsk, mid, spreadPct, touchDepth, fragility });
   }
 
   /**

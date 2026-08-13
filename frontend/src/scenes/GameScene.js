@@ -40,6 +40,8 @@ export class GameScene extends Phaser.Scene {
     // Rocket physics properties
     this.airResistance = 0.998; // Slight air resistance (0.1% drag per frame) for realistic trajectory
     this.explosionSize = 70; // Explosion radius in pixels - increased from 120 for even better area coverage
+    this.baseExplosionSize = 70; // Radius on a healthy book, before market conditions
+    this.maxFragilityBonus = 0.5; // A vanished book reaches half again as far
     this.rocketTrail = []; // Store trail points for visual effect
 
     // Trajectory prediction properties
@@ -104,7 +106,9 @@ export class GameScene extends Phaser.Scene {
     // run would otherwise leak into this one.
     this.stopLiveMarketFeed();
     this.lastTrade = null;
+    this.marketBook = null;
     this.marketFeedStatus = "connecting";
+    this.explosionSize = this.baseExplosionSize;
   }
 
   create() {
@@ -458,6 +462,7 @@ export class GameScene extends Phaser.Scene {
       symbol: this.marketRun.market.symbol,
       source: this.marketRun.source,
       onTrade: (trade) => this.onMarketTrade(trade),
+      onBook: (book) => this.onMarketBook(book),
       onStatus: (status) => this.onMarketStatus(status),
     });
 
@@ -500,6 +505,43 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * A short phrase for how healthy the book is, only when it matters.
+   *
+   * Said in plain terms - a player who has never seen an order book still
+   * understands "thin market, bigger blast".
+   *
+   * @returns {string} suffix for the ticker, empty when the book looks normal
+   */
+  describeBookHealth() {
+    if (!this.marketBook) return "";
+    if (this.marketBook.fragility < 0.25) return "";
+
+    return this.marketBook.fragility > 0.6
+      ? "  ·  thin market, blasts reach much further"
+      : "  ·  thinning market, blasts reach further";
+  }
+
+  /**
+   * The order book moved. Adjust how destructive a rocket is.
+   *
+   * When the money resting at the best prices thins out, the market is
+   * fragile: a modest trade can shove the price a long way. The game makes
+   * that felt rather than explained - on a thin book, blasts reach further and
+   * take more of the level with them. On a deep book, the same rocket does
+   * ordinary damage.
+   *
+   * @param {object} book - current state of the order book
+   */
+  onMarketBook(book) {
+    this.marketBook = book;
+
+    const reach = 1 + book.fragility * this.maxFragilityBonus;
+    this.explosionSize = Math.round(this.baseExplosionSize * reach);
+
+    this.updateMarketTicker();
+  }
+
+  /**
    * @param {string} status - "live" | "connecting" | "offline"
    */
   onMarketStatus(status) {
@@ -531,8 +573,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     const { side, quantity, price } = this.lastTrade;
+    const book = this.describeBookHealth();
     this.marketTickerText.setText(
-      `${side === "buy" ? "BOUGHT" : "SOLD"} ${quantity} @ ${price}`
+      `${side === "buy" ? "BOUGHT" : "SOLD"} ${quantity} @ ${price}${book}`
     );
     this.marketTickerText.setColor(side === "buy" ? "#4ade80" : "#f87171");
   }
