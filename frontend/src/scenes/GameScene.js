@@ -199,21 +199,21 @@ export class GameScene extends Phaser.Scene {
     //console.log("🔗 GameScene: Web3 services initialized");
 
     if (this.walletConnected) {
-      this.loadRocketFuelBalance();
+      this.loadWickBalance();
     }
   }
 
   /**
-   * Load RocketFUEL balance for display
+   * Load WICK balance for display
    */
-  async loadRocketFuelBalance() {
+  async loadWickBalance() {
     if (!this.walletConnected || !this.web3Service) return;
 
     try {
       const _balance = await this.web3Service.getFuelBalance();
-      //console.log(`💰 Current RocketFUEL balance: ${balance}`);
+      //console.log(`💰 Current WICK balance: ${balance}`);
     } catch (error) {
-      console.error("Failed to load RocketFUEL balance in GameScene:", error);
+      console.error("Failed to load WICK balance in GameScene:", error);
     }
   }
 
@@ -1943,16 +1943,16 @@ export class GameScene extends Phaser.Scene {
 
       //console.log("✅ Final score submitted:", scoreResult.transactionHash);
 
-      // Calculate final RocketFUEL reward based on total score and completion status
+      // Calculate final WICK reward based on total score and completion status
       const baseReward = Math.max(20, Math.floor(this.score / 50)); // Higher reward for final score
       const completionBonus = gameResult === "game-complete" ? 50 : 10; // Bonus for completing all levels
       const finalReward = baseReward + completionBonus;
 
-      // Reward RocketFUEL tokens for final score
+      // Reward WICK tokens for final score
       const _rocketFuelResult = await this.web3Service.rewardFuel(finalReward);
 
       // Update balance
-      this.loadRocketFuelBalance();
+      this.loadWickBalance();
 
       // Show success message
       this.showBlockchainSuccessMessage(finalReward, "Final Score Saved!");

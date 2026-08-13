@@ -23,7 +23,7 @@ const FeaturesSection = () => {
         <div className="feature-icon">🔗</div>
         <div className="feature-title">Blockchain Integration</div>
         <p>
-          Scores stored on Somnia blockchain with RocketFUEL token rewards for
+          Scores stored on Somnia blockchain with WICK token rewards for
           achievements.
         </p>
       </div>

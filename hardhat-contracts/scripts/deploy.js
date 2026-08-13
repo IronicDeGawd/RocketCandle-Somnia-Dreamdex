@@ -32,7 +32,17 @@ async function main() {
   }
   console.log("Run attestor:", attestor);
 
-  const rocketCandleGame = await RocketCandleGame.deploy(attestor);
+  // The currency the weekly pot pays out in - USDso, which is also what runs
+  // will be staked in once the trading loop lands.
+  const stakeToken = process.env.STAKE_TOKEN_ADDRESS;
+  if (!stakeToken || !hre.ethers.isAddress(stakeToken)) {
+    throw new Error(
+      "STAKE_TOKEN_ADDRESS must be set to the USDso token address for this network."
+    );
+  }
+  console.log("Stake token:", stakeToken);
+
+  const rocketCandleGame = await RocketCandleGame.deploy(attestor, stakeToken);
 
   console.log("Waiting for deployment...");
   await rocketCandleGame.waitForDeployment();
@@ -117,14 +127,14 @@ async function main() {
     try {
       await hre.run("verify:verify", {
         address: contractAddress,
-        constructorArguments: [attestor],
+        constructorArguments: [attestor, stakeToken],
       });
       console.log("✅ Contract verified successfully");
     } catch (error) {
       console.log("❌ Contract verification failed:", error.message);
       console.log("You can manually verify the contract later using:");
       console.log(
-        `npx hardhat verify --network ${hre.network.name} ${contractAddress} ${attestor}`
+        `npx hardhat verify --network ${hre.network.name} ${contractAddress} ${attestor} ${stakeToken}`
       );
     }
   }

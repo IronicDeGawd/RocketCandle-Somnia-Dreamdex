@@ -280,7 +280,7 @@ export class EndGameScene extends Phaser.Scene {
 
       //console.log("📝 Saving score to blockchain...");
 
-      // Calculate RocketFUEL rewards
+      // Calculate WICK rewards
       const baseReward = Math.max(20, Math.floor(score / 50));
       const completionBonus = this.reason === "completed" ? 50 : 10;
       const finalReward = baseReward + completionBonus;
@@ -298,7 +298,7 @@ export class EndGameScene extends Phaser.Scene {
         //console.log("✅ Score saved to blockchain:", result.transactionHash);
         this.showNotification("✅ Score saved to blockchain!", "success");
 
-        // Reward RocketFUEL tokens
+        // Reward WICK tokens
         try {
           const rocketFuelResult = await window.web3Service.rewardFuel(
             totalReward
@@ -306,23 +306,23 @@ export class EndGameScene extends Phaser.Scene {
 
           if (rocketFuelResult && rocketFuelResult.success) {
             // //console.log(
-            //   "🎁 RocketFUEL reward:",
+            //   "🎁 WICK reward:",
             //   rocketFuelResult.transactionHash
             // );
 
-            // Show the special RocketFuel reward notification with transaction hash
-            this.showRocketFuelRewardsWithTx(
+            // Show the special Wick reward notification with transaction hash
+            this.showWickRewardsWithTx(
               score,
               rocketFuelResult.transactionHash
             );
           } else {
             // Show reward notification without transaction hash
-            this.showRocketFuelRewards(score);
+            this.showWickRewards(score);
           }
         } catch (rewardError) {
-          console.error("❌ Error rewarding RocketFUEL:", rewardError);
+          console.error("❌ Error rewarding WICK:", rewardError);
           // Still show reward notification without transaction hash
-          this.showRocketFuelRewards(score);
+          this.showWickRewards(score);
         }
 
         // Verify blockchain storage
@@ -489,10 +489,10 @@ export class EndGameScene extends Phaser.Scene {
   }
 
   /**
-   * Calculate and show RocketFUEL rewards to the user
+   * Calculate and show WICK rewards to the user
    * @param {number} score - Final game score
    */
-  showRocketFuelRewards(score) {
+  showWickRewards(score) {
     try {
       // Calculate rewards based on the same logic as GameScene
       const baseReward = Math.max(20, Math.floor(score / 50));
@@ -518,30 +518,30 @@ export class EndGameScene extends Phaser.Scene {
         rewardBreakdown.push(`⚡ Efficiency Bonus: ${efficiencyBonus} FUEL`);
       }
 
-      // Show the special RocketFuel reward notification
+      // Show the special Wick reward notification
       if (window.gameNotifications) {
-        window.gameNotifications.showRocketFuelReward(
+        window.gameNotifications.showWickReward(
           totalReward,
           rewardBreakdown,
           null
         );
       }
 
-      //console.log(`🪙 RocketFUEL reward calculated: ${totalReward} tokens`);
+      //console.log(`🪙 WICK reward calculated: ${totalReward} tokens`);
 
       return totalReward;
     } catch (error) {
-      console.error("Error calculating RocketFUEL rewards:", error);
+      console.error("Error calculating WICK rewards:", error);
       return 0;
     }
   }
 
   /**
-   * Calculate and show RocketFUEL rewards with transaction hash
+   * Calculate and show WICK rewards with transaction hash
    * @param {number} score - Final game score
    * @param {string} txHash - Transaction hash for the reward
    */
-  showRocketFuelRewardsWithTx(score, txHash) {
+  showWickRewardsWithTx(score, txHash) {
     try {
       // Calculate rewards based on the same logic as GameScene
       const baseReward = Math.max(20, Math.floor(score / 50));
@@ -567,9 +567,9 @@ export class EndGameScene extends Phaser.Scene {
         rewardBreakdown.push(`⚡ Efficiency Bonus: ${efficiencyBonus} FUEL`);
       }
 
-      // Show the special RocketFuel reward notification with transaction hash
+      // Show the special Wick reward notification with transaction hash
       if (window.gameNotifications) {
-        window.gameNotifications.showRocketFuelReward(
+        window.gameNotifications.showWickReward(
           totalReward,
           rewardBreakdown,
           txHash
@@ -578,7 +578,7 @@ export class EndGameScene extends Phaser.Scene {
 
       return totalReward;
     } catch (error) {
-      console.error("Error calculating RocketFUEL rewards:", error);
+      console.error("Error calculating WICK rewards:", error);
       return 0;
     }
   }

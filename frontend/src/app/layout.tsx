@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://rocket-candle.vercel.app/"),
   title: "Rocket Candle",
   description:
-    "Launch rockets through candlestick barriers, destroy enemies, and earn RocketFUEL tokens in this physics-based puzzle game",
+    "Launch rockets through candlestick barriers, destroy enemies, and earn WICK tokens in this physics-based puzzle game",
   icons: {
     icon: [
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Rocket Candle",
     description:
-      "Launch rockets through candlestick barriers, destroy enemies, and earn RocketFUEL tokens in this physics-based puzzle game",
+      "Launch rockets through candlestick barriers, destroy enemies, and earn WICK tokens in this physics-based puzzle game",
     images: ["/logo.png"],
     type: "website",
   },
@@ -50,7 +50,7 @@ export const metadata: Metadata = {
     card: "summary",
     title: "Rocket Candle",
     description:
-      "Launch rockets through candlestick barriers, destroy enemies, and earn RocketFUEL tokens in this physics-based puzzle game",
+      "Launch rockets through candlestick barriers, destroy enemies, and earn WICK tokens in this physics-based puzzle game",
     images: ["/logo.png"],
   },
 };

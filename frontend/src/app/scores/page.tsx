@@ -174,7 +174,7 @@ export default function ScoresPage() {
                     </div>
                   </div>
                   <div className="stat-card">
-                    <div className="stat-label">RocketFUEL Tokens</div>
+                    <div className="stat-label">WICK Tokens</div>
                     <div className="stat-value highlight">
                       {playerStats.totalTokens.toFixed(2)}
                     </div>
@@ -308,7 +308,7 @@ export default function ScoresPage() {
                 <div className="stat-value">
                   {playerStats.totalTokens.toFixed(2)}
                 </div>
-                <div className="stat-label">Total RocketFUEL</div>
+                <div className="stat-label">Total WICK</div>
               </div>
               <div className="stat-item">
                 <div className="stat-value">

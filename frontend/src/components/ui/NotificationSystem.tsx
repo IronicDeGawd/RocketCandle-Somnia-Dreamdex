@@ -197,7 +197,7 @@ export const useNotifications = () => {
   const notifyScoreSubmitted = useCallback((score: number, tokens: number) => {
     return notifySuccess(
       '🎮 Score Submitted!',
-      `Score: ${score.toLocaleString()} | Earned: ${tokens.toFixed(2)} RocketFUEL`,
+      `Score: ${score.toLocaleString()} | Earned: ${tokens.toFixed(2)} WICK`,
       6000
     );
   }, [notifySuccess]);

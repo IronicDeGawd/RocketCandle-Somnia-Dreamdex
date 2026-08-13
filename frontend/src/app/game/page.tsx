@@ -417,7 +417,7 @@ export default function GamePage() {
             <div className="game-title-section">
               <h1 className="game-title">🚀 Rocket Candle</h1>
               <p className="game-subtitle">
-                Destroy enemies, earn RocketFUEL tokens!
+                Destroy enemies, earn WICK tokens!
               </p>
             </div>
 
@@ -431,7 +431,7 @@ export default function GamePage() {
               {/* Player Stats */}
               {playerStats && (
                 <div className="stat-card">
-                  <div className="stat-label">RocketFUEL Tokens</div>
+                  <div className="stat-label">WICK Tokens</div>
                   <div className="stat-value highlight">
                     {playerStats.totalTokens.toFixed(2)}
                   </div>

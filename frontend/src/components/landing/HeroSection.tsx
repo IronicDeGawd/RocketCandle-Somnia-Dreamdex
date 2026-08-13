@@ -25,7 +25,7 @@ const HeroSection = ({ onDashboard, onStartGame, onHowToPlay }: HeroSectionProps
 
       <h1 className="hero-title">🚀 Rocket Candle</h1>
       <p className="hero-subtitle">
-        Blast through candlestick barriers and earn RocketFUEL tokens on the
+        Blast through candlestick barriers and earn WICK tokens on the
         Somnia blockchain! Master physics-based gameplay in this revolutionary
         Web3 gaming experience.
       </p>
