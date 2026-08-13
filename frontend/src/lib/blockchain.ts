@@ -726,6 +726,21 @@ export const GAME_CONTRACT_ABI = [
         "internalType": "uint16",
         "name": "_rocketsUsed",
         "type": "uint16"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_nonce",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_deadline",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bytes",
+        "name": "_signature",
+        "type": "bytes"
       }
     ],
     "name": "submitScore",
