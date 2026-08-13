@@ -1,8 +1,6 @@
 import { AssetGenerator } from "@/utils/AssetGenerator.js";
 import { MarketDataProvider } from "@/data/MarketDataProvider.js";
-
-/** Market a run uses when the player has not picked one yet. */
-const DEFAULT_MARKET_ID = "somi";
+import { DEFAULT_MARKET_ID } from "@/data/DreamdexMarketFeed.js";
 
 /**
  * PreloadScene - Handles loading of all game assets
@@ -275,12 +273,20 @@ export class PreloadScene extends Phaser.Scene {
   loadMarketRun() {
     const marketId = this.registry.get("selectedMarketId") || DEFAULT_MARKET_ID;
 
+    // The menu can appear before this resolves, so the pending state is shared
+    // rather than kept here - otherwise the menu reports the exchange as
+    // unreachable while the request is still in flight.
+    this.registry.set("marketRunLoading", true);
+
     MarketDataProvider.generateLiveGameLevels(marketId)
       .then((run) => {
         this.registry.set("marketRun", run);
       })
       .catch(() => {
         this.registry.set("marketRun", null);
+      })
+      .finally(() => {
+        this.registry.set("marketRunLoading", false);
       });
   }
 

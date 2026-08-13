@@ -1,4 +1,9 @@
 import { UIComponents } from "@/components/UIComponents.js";
+import {
+  DEFAULT_MARKET_ID,
+  GAME_MARKETS,
+} from "@/data/DreamdexMarketFeed.js";
+import { MarketDataProvider } from "@/data/MarketDataProvider.js";
 
 /**
  * MenuScene - Main menu with play button and last game score
@@ -52,11 +57,14 @@ export class MenuScene extends Phaser.Scene {
     // Display player stats from blockchain
     this.displayPlayerStats();
 
+    // Let the player choose which market they play
+    this.createMarketPicker();
+
     // Create play button - simplified without wallet checks
     const playButton = UIComponents.createButton(
       this,
       600,
-      380,
+      450,
       "PLAY GAME",
       () => this.startGame(),
       {
@@ -76,7 +84,7 @@ export class MenuScene extends Phaser.Scene {
 
     // Create instructions
     this.add
-      .text(600, 480, "Use sliders to aim, LAUNCH to fire!", {
+      .text(600, 510, "Use sliders to aim, LAUNCH to fire!", {
         fontSize: "20px", // Increased from 18px
         fill: "#aaaaaa",
         fontFamily: "Pixelify Sans, Arial",
@@ -84,7 +92,7 @@ export class MenuScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.add
-      .text(600, 510, "Limited attempts per level - make them count!", {
+      .text(600, 540, "Limited attempts per level - make them count!", {
         fontSize: "18px", // Increased from 16px
         fill: "#ff6666",
         fontFamily: "Pixelify Sans, Arial",
@@ -95,9 +103,180 @@ export class MenuScene extends Phaser.Scene {
   }
 
   /**
+   * Build the row of markets a player can pick between.
+   *
+   * Choosing a market is the difficulty choice: a stablecoin barely moves and
+   * makes flat, gentle ground, while bitcoin throws up cliffs. Nothing here
+   * invents a difficulty setting - the market supplies it.
+   */
+  createMarketPicker() {
+    this.add
+      .text(600, 300, "CHOOSE YOUR MARKET", {
+        fontSize: "18px",
+        fill: "#87ceeb",
+        fontFamily: "Pixelify Sans, Arial",
+      })
+      .setOrigin(0.5);
+
+    this.marketChips = [];
+    const spacing = 220;
+    const startX = 600 - ((GAME_MARKETS.length - 1) * spacing) / 2;
+
+    GAME_MARKETS.forEach((market, index) => {
+      const x = startX + index * spacing;
+      const chip = this.add
+        .graphics()
+        .setInteractive(
+          new Phaser.Geom.Rectangle(x - 100, 330, 200, 56),
+          Phaser.Geom.Rectangle.Contains
+        )
+        .on("pointerdown", () => this.selectMarket(market.id));
+
+      const label = this.add
+        .text(x, 344, market.label, {
+          fontSize: "20px",
+          fill: "#ffffff",
+          fontFamily: "Pixelify Sans, Arial",
+        })
+        .setOrigin(0.5);
+
+      const blurb = this.add
+        .text(x, 368, market.blurb, {
+          fontSize: "12px",
+          fill: "#9aa4c4",
+          fontFamily: "Pixelify Sans, Arial",
+          wordWrap: { width: 190 },
+          align: "center",
+        })
+        .setOrigin(0.5, 0.5);
+
+      this.marketChips.push({ market, chip, label, blurb, x });
+    });
+
+    // One line telling the player what the chosen market is actually doing.
+    this.marketStatusText = this.add
+      .text(600, 410, "", {
+        fontSize: "14px",
+        fill: "#9aa4c4",
+        fontFamily: "Pixelify Sans, Arial",
+      })
+      .setOrigin(0.5);
+
+    this.selectedMarketId =
+      this.registry.get("selectedMarketId") || DEFAULT_MARKET_ID;
+
+    // The preload fetch may still be running when this menu appears, so adopt
+    // its pending state rather than assuming the exchange never answered.
+    this.marketLoading = Boolean(this.registry.get("marketRunLoading"));
+
+    const onRegistryChange = (parent, key) => {
+      if (key !== "marketRun" && key !== "marketRunLoading") return;
+      if (key === "marketRunLoading") {
+        this.marketLoading = Boolean(this.registry.get("marketRunLoading"));
+      }
+      this.reportMarketStatus();
+      this.refreshPlayButton();
+    };
+
+    this.registry.events.on("changedata", onRegistryChange);
+    this.events.once("shutdown", () => {
+      this.registry.events.off("changedata", onRegistryChange);
+    });
+
+    this.paintMarketChips();
+    this.reportMarketStatus();
+  }
+
+  /**
+   * Redraw the chips so the chosen one is obvious.
+   */
+  paintMarketChips() {
+    this.marketChips.forEach(({ market, chip, x }) => {
+      const chosen = market.id === this.selectedMarketId;
+      chip.clear();
+      chip.fillStyle(chosen ? 0x1f6feb : 0x24263a);
+      chip.fillRoundedRect(x - 100, 330, 200, 56, 10);
+      chip.lineStyle(2, chosen ? 0x58a6ff : 0x3a3d55);
+      chip.strokeRoundedRect(x - 100, 330, 200, 56, 10);
+    });
+  }
+
+  /**
+   * Say where the current market's terrain comes from and whether it is live.
+   *
+   * A mirrored market is called out plainly. Passing a mainnet mirror off as
+   * live trading on this network would be the one lie that discredits every
+   * other claim the game makes.
+   */
+  reportMarketStatus() {
+    if (!this.marketStatusText) return;
+
+    if (this.marketLoading) {
+      this.marketStatusText.setText("Reading the market...");
+      return;
+    }
+
+    const run = this.registry.get("marketRun");
+
+    if (!run || !run.live) {
+      this.marketStatusText.setText("Simulated market - exchange unreachable");
+      return;
+    }
+
+    const stages = run.levels.filter((level) => level.live).length;
+    const origin = run.mirrored
+      ? "mirrored from mainnet"
+      : "live on this network";
+
+    this.marketStatusText.setText(
+      `${run.market.label} - ${stages} of ${run.levels.length} stages from real trading, ${origin}`
+    );
+  }
+
+  /**
+   * Switch markets and fetch that market's terrain.
+   *
+   * @param {string} marketId
+   */
+  selectMarket(marketId) {
+    if (this.marketLoading || marketId === this.selectedMarketId) return;
+
+    this.selectedMarketId = marketId;
+    this.registry.set("selectedMarketId", marketId);
+    this.paintMarketChips();
+
+    this.registry.set("marketRunLoading", true);
+
+    MarketDataProvider.generateLiveGameLevels(marketId)
+      .then((run) => {
+        this.registry.set("marketRun", run);
+      })
+      .catch(() => {
+        this.registry.set("marketRun", null);
+      })
+      .finally(() => {
+        this.registry.set("marketRunLoading", false);
+      });
+  }
+
+  /**
+   * Keep the play button honest about whether a run is ready to start.
+   */
+  refreshPlayButton() {
+    if (!this.playButton) return;
+    this.playButton.text.setText(
+      this.marketLoading ? "LOADING MARKET" : "PLAY GAME"
+    );
+  }
+
+  /**
    * Start the game
    */
   startGame() {
+    // Starting mid-fetch would drop the player onto the previous market's
+    // terrain, which is worse than making them wait a moment.
+    if (this.marketLoading) return;
+
     //console.log("🚀 Starting new game...");
     
     // Stop all sounds before transitioning
