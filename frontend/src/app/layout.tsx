@@ -15,7 +15,7 @@ const pixelifySans = Pixelify_Sans({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://rocket-candle.vercel.app/"),
-  title: "Rocket Candle - Farcaster Mini App",
+  title: "Rocket Candle",
   description:
     "Launch rockets through candlestick barriers, destroy enemies, and earn RocketFUEL tokens in this physics-based puzzle game",
   icons: {
@@ -40,7 +40,7 @@ export const metadata: Metadata = {
   },
   manifest: "/site.webmanifest",
   openGraph: {
-    title: "Rocket Candle - Farcaster Mini App",
+    title: "Rocket Candle",
     description:
       "Launch rockets through candlestick barriers, destroy enemies, and earn RocketFUEL tokens in this physics-based puzzle game",
     images: ["/logo.png"],
@@ -48,7 +48,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "Rocket Candle - Farcaster Mini App",
+    title: "Rocket Candle",
     description:
       "Launch rockets through candlestick barriers, destroy enemies, and earn RocketFUEL tokens in this physics-based puzzle game",
     images: ["/logo.png"],
@@ -77,10 +77,6 @@ export default function RootLayout({
         <meta name="application-name" content="Rocket Candle" />
         <meta name="msapplication-TileColor" content="#1a1a2e" />
         <meta name="theme-color" content="#1a1a2e" />
-        <meta
-          name="fc:miniapp"
-          content='{"version":"1","name":"Rocket Candle","iconUrl":"https://rocket-candle.vercel.app/logo.png","homeUrl":"https://rocket-candle.vercel.app","imageUrl":"https://rocket-candle.vercel.app/logo.png","button":{"text":"🚀 Play Now","action":"play"}}'
-        />
       </head>
       <body className={`${pixelifySans.variable}`}>
         <FloatingBackground />
