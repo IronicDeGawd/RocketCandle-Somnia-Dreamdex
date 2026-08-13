@@ -11,13 +11,16 @@ import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
 /**
  * @title RocketCandleGame
  * @dev Combined ERC20 token and game logic contract for Rocket Candle
- * Unified contract with game mechanics and RocketFUEL token economy
+ * Unified contract with game mechanics and WICK token economy
  */
 contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
     using ECDSA for bytes32;
+    using SafeERC20 for IERC20;
 
     struct GameSession {
         uint256 score;
@@ -53,17 +56,17 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
     event RevivePurchased(address indexed player, uint256 cost);
 
     // Token Economics Constants
-    uint256 public constant TOKENS_PER_1000_SCORE = 1 * 10 ** 18; // 1 RocketFUEL per 1,000 score
-    uint256 public constant TOKENS_PER_LEVEL = 15 * 10 ** 17; // 1.5 RocketFUEL per level completed
-    uint256 public constant REVIVE_COST = 50 * 10 ** 18; // 50 RocketFUEL for revive
-    uint256 public constant MAX_TOTAL_SUPPLY = 10000000 * 10 ** 18; // 10 million RocketFUEL max
-    uint256 public constant TREASURY_RESERVE = 9000000 * 10 ** 18; // 9 million for rewards
+    uint256 public constant TOKENS_PER_1000_SCORE = 1 * 10 ** 18; // 1 WICK per 1,000 score
+    uint256 public constant TOKENS_PER_LEVEL = 15 * 10 ** 17; // 1.5 WICK per level completed
+    uint256 public constant REVIVE_COST = 50 * 10 ** 18; // 50 WICK for revive
+    uint256 public constant FIREPOWER_COST = 75 * 10 ** 18; // 75 WICK for a bigger opening position
+    uint256 public constant MARKET_PASS_COST = 150 * 10 ** 18; // 150 WICK to enter the expensive market
+    uint256 public constant MARKET_PASS_DURATION = 7 days;
 
-    // Weekly rewards
-    uint256 public constant FIRST_PLACE_REWARD = 500 * 10 ** 18; // 500 RocketFUEL
-    uint256 public constant SECOND_PLACE_REWARD = 300 * 10 ** 18; // 300 RocketFUEL
-    uint256 public constant THIRD_PLACE_REWARD = 150 * 10 ** 18; // 150 RocketFUEL
-    uint256 public constant TOP_10_REWARD = 25 * 10 ** 18; // 25 RocketFUEL for places 4-10
+    /// @dev Smallest balance that can claim a share of a week's pot.
+    uint256 public constant CLAIM_THRESHOLD = 100 * 10 ** 18;
+    uint256 public constant MAX_TOTAL_SUPPLY = 10000000 * 10 ** 18; // 10 million WICK max
+    uint256 public constant TREASURY_RESERVE = 9000000 * 10 ** 18; // 9 million for rewards
 
     // Anti-cheat constants
     uint256 public constant MIN_GAME_TIME = 5; // Minimum 5 seconds
@@ -97,13 +100,15 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
         runAttestor = _attestor;
     }
 
-    constructor(address _runAttestor)
-        ERC20("Rocket Candle Fuel", "RocketFUEL")
+    constructor(address _runAttestor, address _stakeToken)
+        ERC20("Rocket Candle Wick", "WICK")
         Ownable(msg.sender)
         EIP712("RocketCandle", "1")
     {
         require(_runAttestor != address(0), "Invalid attestor");
+        require(_stakeToken != address(0), "Invalid stake token");
         runAttestor = _runAttestor;
+        stakeToken = IERC20(_stakeToken);
 
         // Mint treasury to contract
         _mint(address(this), TREASURY_RESERVE);
@@ -112,7 +117,7 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
     }
 
     /**
-     * @dev Submit game score and receive RocketFUEL tokens
+     * @dev Submit game score and receive WICK tokens
      */
     function submitScore(
         uint256 _score,
@@ -181,6 +186,12 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
         if (tokensEarned > 0 && balanceOf(address(this)) >= tokensEarned) {
             _transfer(address(this), msg.sender, tokensEarned);
             emit TokensEarned(msg.sender, tokensEarned);
+
+            // Record the points against this week so the pot can be shared out
+            // once the week closes. Counted at the moment they are earned, so a
+            // later purchase or transfer cannot change anybody's slice.
+            weeklyPointsEarned[currentWeek][msg.sender] += tokensEarned;
+            weeklyPointsTotal[currentWeek] += tokensEarned;
         }
 
         emit GameCompleted(
@@ -192,13 +203,135 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
         );
     }
 
+
+    // --- Weekly pot -------------------------------------------------------
+    //
+    // WICK is points, not a promise of a fixed amount of money. A fixed rate -
+    // so many points always buy so much - is a well with no bottom: anybody who
+    // earns faster than planned drains it, and the only way out is to break the
+    // rate, which players never forgive.
+    //
+    // So a week's pot is shared out instead. Your points that week, divided by
+    // everybody's points that week, is your slice. A busy week pays a bigger
+    // pot; a quiet one pays less. The pot can never pay out more than went into
+    // it, so somebody farming points mostly dilutes themselves.
+
+    /// @dev What the pot is paid in - USDso, the currency runs are staked in.
+    IERC20 public stakeToken;
+
+    mapping(uint256 => uint256) public weeklyPot;
+    mapping(uint256 => uint256) public weeklyPointsTotal;
+    mapping(uint256 => mapping(address => uint256)) public weeklyPointsEarned;
+    mapping(uint256 => mapping(address => bool)) public weeklyClaimed;
+
+    event WeeklyPotFunded(uint256 indexed week, address indexed from, uint256 amount);
+    event WeeklyShareClaimed(uint256 indexed week, address indexed player, uint256 amount);
+
     /**
-     * @dev Purchase revive using RocketFUEL tokens
+     * @dev Add to the current week's pot.
+     *
+     * Open to anyone: entry stakes will feed it, and the treasury can top it up
+     * to get a demo going. Funds land in whichever week is running when they
+     * arrive, so a late contribution cannot dilute a week already being claimed.
+     */
+    function fundWeeklyPot(uint256 _amount) external nonReentrant {
+        require(_amount > 0, "Nothing to add");
+
+        uint256 week = getCurrentWeek();
+        // Measure what actually arrived rather than what was asked for, so a
+        // token that takes a cut on transfer cannot leave the pot overstated.
+        uint256 before = stakeToken.balanceOf(address(this));
+        stakeToken.safeTransferFrom(msg.sender, address(this), _amount);
+        uint256 received = stakeToken.balanceOf(address(this)) - before;
+
+        weeklyPot[week] += received;
+        emit WeeklyPotFunded(week, msg.sender, received);
+    }
+
+    /**
+     * @dev Claim your share of a finished week.
+     *
+     * Only past weeks can be claimed, so the split is over a total that can no
+     * longer move. Holding the threshold is a gate on claiming, not a price:
+     * claiming spends no WICK, and your slice depends on what you earned that
+     * week, not on what you hold now.
+     */
+    function claimWeeklyShare(uint256 _week) external nonReentrant whenNotPaused {
+        require(_week < getCurrentWeek(), "Week still running");
+        require(!weeklyClaimed[_week][msg.sender], "Already claimed");
+        require(balanceOf(msg.sender) >= CLAIM_THRESHOLD, "Below claim threshold");
+
+        uint256 earned = weeklyPointsEarned[_week][msg.sender];
+        require(earned > 0, "Nothing earned that week");
+
+        uint256 total = weeklyPointsTotal[_week];
+        uint256 pot = weeklyPot[_week];
+        require(total > 0 && pot > 0, "Nothing to share");
+
+        weeklyClaimed[_week][msg.sender] = true;
+
+        uint256 share = (pot * earned) / total;
+        require(share > 0, "Share rounds to nothing");
+
+        stakeToken.safeTransfer(msg.sender, share);
+        emit WeeklyShareClaimed(_week, msg.sender, share);
+    }
+
+    // --- Sinks ------------------------------------------------------------
+    //
+    // A points token that is only ever earned inflates until it means nothing.
+    // These burn it. Every one of them buys something a player actually wants,
+    // and none of them can be bought with money - only with points.
+
+    mapping(address => uint256) public marketPassExpiry;
+
+    event FirepowerPurchased(address indexed player, uint256 cost);
+    event MarketPassPurchased(address indexed player, uint256 cost, uint256 expiresAt);
+
+    /**
+     * @dev Spend points for a bigger opening position on the next run.
+     *
+     * Buys more firepower without staking more real money, which is the point:
+     * a player who has been grinding can punch above their stake.
+     */
+    function purchaseFirepower() external nonReentrant whenNotPaused {
+        require(balanceOf(msg.sender) >= FIREPOWER_COST, "Insufficient WICK");
+        _burn(msg.sender, FIREPOWER_COST);
+        emit FirepowerPurchased(msg.sender, FIREPOWER_COST);
+    }
+
+    /**
+     * @dev Spend points to enter the expensive market.
+     *
+     * Bitcoin's minimum trade is a real wall for a new player. This lets points
+     * pay that entry instead of cash.
+     */
+    function purchaseMarketPass() external nonReentrant whenNotPaused {
+        require(balanceOf(msg.sender) >= MARKET_PASS_COST, "Insufficient WICK");
+        _burn(msg.sender, MARKET_PASS_COST);
+
+        // Extend from whenever the current pass runs out, so buying early never
+        // throws away time already paid for.
+        uint256 from = marketPassExpiry[msg.sender] > block.timestamp
+            ? marketPassExpiry[msg.sender]
+            : block.timestamp;
+        marketPassExpiry[msg.sender] = from + MARKET_PASS_DURATION;
+
+        emit MarketPassPurchased(msg.sender, MARKET_PASS_COST, marketPassExpiry[msg.sender]);
+    }
+
+    /// @dev Does this player currently hold a pass to the expensive market?
+    function hasMarketPass(address _player) external view returns (bool) {
+        return marketPassExpiry[_player] > block.timestamp;
+    }
+
+    /**
+     * @dev Purchase revive using WICK tokens
      */
     function purchaseRevive() external nonReentrant whenNotPaused {
         require(
             balanceOf(msg.sender) >= REVIVE_COST,
-            "Insufficient RocketFUEL tokens"
+            "Insufficient WICK"
         );
 
         // Burn tokens for revive

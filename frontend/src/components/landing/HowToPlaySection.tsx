@@ -156,11 +156,11 @@ const HowToPlaySection = () => {
             </div>
           </div>
 
-          {/* RocketFUEL Tokens */}
+          {/* WICK Tokens */}
           <div className="how-to-play-card">
             <div className="card-header">
               <div className="card-icon">🪙</div>
-              <h3>RocketFUEL Tokens</h3>
+              <h3>WICK Tokens</h3>
             </div>
             <div className="token-details">
               <div className="token-item">
@@ -169,7 +169,7 @@ const HowToPlaySection = () => {
                   <strong>Earning Tokens</strong>
                 </div>
                 <p>
-                  Complete levels and achieve high scores to earn RocketFUEL
+                  Complete levels and achieve high scores to earn WICK
                   tokens
                 </p>
               </div>
@@ -191,7 +191,7 @@ const HowToPlaySection = () => {
                   <strong>Blockchain Integration</strong>
                 </div>
                 <p>
-                  All RocketFUEL tokens are stored securely on the Somnia
+                  All WICK tokens are stored securely on the Somnia
                   blockchain
                 </p>
               </div>
@@ -302,7 +302,7 @@ const HowToPlaySection = () => {
             <p>
               <strong>Ready to start your journey?</strong>
               <br />
-              Connect your wallet and begin earning RocketFUEL tokens while
+              Connect your wallet and begin earning WICK tokens while
               having fun!
             </p>
           </div>

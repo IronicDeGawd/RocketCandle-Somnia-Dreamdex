@@ -36,7 +36,7 @@ const WalletSection = ({
             )}
           </button>
           <p className="text-gray-400 text-base">
-            Connect your wallet to start earning RocketFUEL tokens
+            Connect your wallet to start earning WICK tokens
           </p>
         </div>
       </div>

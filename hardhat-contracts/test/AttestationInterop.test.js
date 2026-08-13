@@ -28,8 +28,15 @@ describe("Attestation service <-> contract", function () {
     [owner, player] = await ethers.getSigners();
     signerWallet = ethers.Wallet.createRandom();
 
+    const Mock = await ethers.getContractFactory("MockStakeToken");
+    const stake = await Mock.deploy();
+    await stake.waitForDeployment();
+
     const RocketCandleGame = await ethers.getContractFactory("RocketCandleGame");
-    game = await RocketCandleGame.deploy(signerWallet.address);
+    game = await RocketCandleGame.deploy(
+      signerWallet.address,
+      await stake.getAddress()
+    );
     await game.waitForDeployment();
   });
 

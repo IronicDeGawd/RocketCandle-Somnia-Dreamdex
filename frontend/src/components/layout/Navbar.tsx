@@ -108,7 +108,7 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
                           <span>{playerStats.bestScore.toLocaleString()}</span>
                         </div>
                         <div className="stat-row">
-                          <span>RocketFUEL:</span>
+                          <span>WICK:</span>
                           <span>{playerStats.totalTokens.toFixed(2)}</span>
                         </div>
                       </div>

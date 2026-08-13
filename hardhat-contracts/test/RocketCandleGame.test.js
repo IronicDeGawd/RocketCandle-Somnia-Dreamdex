@@ -74,17 +74,24 @@ describe("RocketCandleGame", function () {
   beforeEach(async function () {
     [owner, player1, player2, attestor] = await ethers.getSigners();
 
+    const Mock = await ethers.getContractFactory("MockStakeToken");
+    const stake = await Mock.deploy();
+    await stake.waitForDeployment();
+
     const RocketCandleGame = await ethers.getContractFactory(
       "RocketCandleGame"
     );
-    rocketCandleGame = await RocketCandleGame.deploy(attestor.address);
+    rocketCandleGame = await RocketCandleGame.deploy(
+      attestor.address,
+      await stake.getAddress()
+    );
     await rocketCandleGame.waitForDeployment();
   });
 
   describe("Deployment", function () {
     it("Should set the right token details", async function () {
-      expect(await rocketCandleGame.name()).to.equal("Rocket Candle Fuel");
-      expect(await rocketCandleGame.symbol()).to.equal("RocketFUEL");
+      expect(await rocketCandleGame.name()).to.equal("Rocket Candle Wick");
+      expect(await rocketCandleGame.symbol()).to.equal("WICK");
     });
 
     it("Should set the right owner", async function () {
@@ -257,7 +264,7 @@ describe("RocketCandleGame", function () {
     it("Should reject revive without enough tokens", async function () {
       await expect(
         rocketCandleGame.connect(player1).purchaseRevive()
-      ).to.be.revertedWith("Insufficient RocketFUEL tokens");
+      ).to.be.revertedWith("Insufficient WICK");
     });
   });
 

@@ -889,8 +889,8 @@ export function parseTokenAmount(amount: number, decimals: number = 18): bigint 
 
 // Calculate expected token reward for a score
 export function calculateExpectedReward(score: number, level: number): number {
-  const TOKENS_PER_1000_SCORE = 1; // 1 RocketFUEL per 1000 score
-  const TOKENS_PER_LEVEL = 1.5; // 1.5 RocketFUEL per level
+  const TOKENS_PER_1000_SCORE = 1; // 1 WICK per 1000 score
+  const TOKENS_PER_LEVEL = 1.5; // 1.5 WICK per level
   
   const scoreReward = Math.floor(score / 1000) * TOKENS_PER_1000_SCORE;
   const levelReward = level * TOKENS_PER_LEVEL;
