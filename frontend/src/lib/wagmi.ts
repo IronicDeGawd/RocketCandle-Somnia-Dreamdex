@@ -1,6 +1,5 @@
 import { http, createConfig } from 'wagmi'
 import { defineChain } from 'viem'
-import { farcasterMiniApp as miniAppConnector } from '@farcaster/miniapp-wagmi-connector'
 import { injected, metaMask } from 'wagmi/connectors'
 
 // Define Somnia Network
@@ -36,6 +35,5 @@ export const wagmiConfig = createConfig({
       shimDisconnect: true,
     }),
     metaMask(),
-    miniAppConnector()
   ],
 })
