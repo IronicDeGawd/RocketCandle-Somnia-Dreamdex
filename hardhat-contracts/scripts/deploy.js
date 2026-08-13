@@ -117,14 +117,14 @@ async function main() {
     try {
       await hre.run("verify:verify", {
         address: contractAddress,
-        constructorArguments: [],
+        constructorArguments: [attestor],
       });
       console.log("✅ Contract verified successfully");
     } catch (error) {
       console.log("❌ Contract verification failed:", error.message);
       console.log("You can manually verify the contract later using:");
       console.log(
-        `npx hardhat verify --network ${hre.network.name} ${contractAddress}`
+        `npx hardhat verify --network ${hre.network.name} ${contractAddress} ${attestor}`
       );
     }
   }
