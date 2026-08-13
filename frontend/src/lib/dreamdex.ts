@@ -151,6 +151,14 @@ export const DREAMDEX_REST = {
 export interface MarketMeta {
   symbol: string;
   pool: `0x${string}`;
+  /**
+   * Where conditional orders for this market live.
+   *
+   * A separate contract per market, published by the API rather than assumed.
+   * Absent on any market that has no registry deployed, so callers must treat
+   * a missing one as "stops unavailable here" instead of a bug.
+   */
+  stopRegistry: `0x${string}` | null;
   /** True when the base side is the chain's own coin rather than a token. */
   baseIsNative: boolean;
   baseDecimals: number;
@@ -189,6 +197,7 @@ export async function fetchMarket(
   return {
     symbol: market.symbol,
     pool: market.contract,
+    stopRegistry: market.stopRegistry ?? null,
     baseIsNative:
       String(market.base).toLowerCase() === NATIVE_SENTINEL.toLowerCase(),
     baseDecimals: Number(market.baseDecimals),

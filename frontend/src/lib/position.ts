@@ -222,9 +222,10 @@ export async function markToMarket(
  * Has the price fallen through the floor the player set?
  *
  * This is a stop watched by the game, so it only works while the page is open.
- * It is not the same as an order resting on the exchange, which would fire even
- * with the browser closed - each market exposes its own stop registry for that,
- * and moving to it is the honest upgrade.
+ * It is deliberately kept alongside the stop that can rest on the exchange
+ * rather than replaced by it: the resting one survives the tab closing but
+ * needs the player's signature and a deposit, while this one is free, instant,
+ * and covers every position including one topped up mid-run.
  *
  * @param floorPrice the price below which the position should be sold
  */
