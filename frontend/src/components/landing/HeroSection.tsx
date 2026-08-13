@@ -36,6 +36,13 @@ const HeroSection = ({ onDashboard, onStartGame, onHowToPlay }: HeroSectionProps
         onStartGame={onStartGame}
         onHowToPlay={onHowToPlay || scrollToHowToPlay}
       />
+
+      {/* A way in for anyone without a wallet. Asking for one before the first
+          shot loses most people who were only ever going to try it once. */}
+      <p className="hero-practice">
+        No wallet? <a href="/practice">Play a practice run</a> — real markets,
+        nothing recorded.
+      </p>
     </section>
   );
 };

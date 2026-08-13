@@ -215,7 +215,16 @@ export class EndGameScene extends Phaser.Scene {
   notifyGameCompletion() {
     // Use the global callback provided by the parent component
     if (typeof window !== 'undefined' && window.rocketCandleGame) {
-      const { onGameComplete } = window.rocketCandleGame;
+      const { onGameComplete, practiceMode } = window.rocketCandleGame;
+
+      if (practiceMode) {
+        this.showNotification(
+          "🎯 Practice run - nothing recorded, no WICK earned",
+          "info"
+        );
+        return;
+      }
+
       if (onGameComplete && typeof onGameComplete === 'function') {
         console.log('🚀 Notifying blockchain of game completion...', {
           score: this.finalScore,

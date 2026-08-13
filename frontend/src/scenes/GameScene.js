@@ -107,6 +107,7 @@ export class GameScene extends Phaser.Scene {
     this.stopLiveMarketFeed();
     this.lastTrade = null;
     this.marketBook = null;
+    this.breakout = null;
     this.marketFeedStatus = "connecting";
     this.explosionSize = this.baseExplosionSize;
   }
@@ -493,8 +494,17 @@ export class GameScene extends Phaser.Scene {
    * @param {object} trade - normalized trade from the live feed
    */
   onMarketTrade(trade) {
+    const firstTrade = !this.lastTrade;
     this.lastTrade = trade;
     this.updateMarketTicker();
+
+    // The range can only be armed once a live price is known, which is the
+    // first trade to arrive rather than the moment the level was built.
+    if (firstTrade) {
+      this.armBreakout();
+    } else {
+      this.checkBreakout(trade.price);
+    }
 
     // Never interrupt a rocket in flight. The shot is the one moment where the
     // player's aim has to be the only thing that decided the outcome.
@@ -502,6 +512,162 @@ export class GameScene extends Phaser.Scene {
 
     const strength = Math.max(0.4, Math.min(4, trade.magnitude));
     this.cameras.main.shake(120 + strength * 60, 0.001 * strength);
+  }
+
+  /**
+   * Show the wind before the shot, never after.
+   *
+   * @returns {string} suffix for the ticker, empty when the air is still
+   */
+  describeWind() {
+    const wind = this.marketWindAcceleration();
+    if (!wind) return "";
+
+    const arrow = wind > 0 ? "-->" : "<--";
+    const force = Math.abs(wind) > 40 ? "strong" : "light";
+    return `  ·  wide spread, ${force} drift ${arrow}`;
+  }
+
+  /**
+   * Arm the breakout for this level.
+   *
+   * The highest high and the lowest low of the level's own candles are the
+   * walls the market built. If the live price later breaks through one of
+   * them, that barrier comes down.
+   *
+   * Only armed when the current price starts *inside* the range. Levels are
+   * built from a historical window, so today's price is often nowhere near it -
+   * and a wall that shatters the instant play begins teaches nothing.
+   */
+  armBreakout() {
+    this.breakout = null;
+
+    const level = this.candlestickData[this.currentLevel];
+    if (!level || !level.live || !this.lastTrade) return;
+
+    const highs = level.candlesticks.map((c) => c.high);
+    const lows = level.candlesticks.map((c) => c.low);
+    const resistance = Math.max(...highs);
+    const support = Math.min(...lows);
+
+    const price = this.lastTrade.price;
+    if (!(price > support && price < resistance)) return;
+
+    this.breakout = { support, resistance, broken: false };
+  }
+
+  /**
+   * Has the price just broken out of the level's range?
+   *
+   * @param {number} price - the price of the trade that just landed
+   */
+  checkBreakout(price) {
+    if (!this.breakout || this.breakout.broken) return;
+
+    const above = price > this.breakout.resistance;
+    const below = price < this.breakout.support;
+    if (!above && !below) return;
+
+    this.breakout.broken = true;
+    this.shatterBarrier(above);
+  }
+
+  /**
+   * Bring down the barrier that set the level's high or low.
+   *
+   * @param {boolean} wasResistance - true if the price broke upwards
+   */
+  shatterBarrier(wasResistance) {
+    if (!this.candlestickSprites.length) return;
+
+    // The tallest barrier is the one that set the ceiling; the shortest set the
+    // floor. Whichever the price broke through is the one that gives way.
+    let target = null;
+    let best = wasResistance ? -Infinity : Infinity;
+
+    this.candlestickSprites.forEach((entry) => {
+      const value = wasResistance ? entry.data.high : entry.data.low;
+      if (wasResistance ? value > best : value < best) {
+        best = value;
+        target = entry;
+      }
+    });
+
+    if (!target || !target.blocks || !target.blocks.length) return;
+
+    this.cameras.main.shake(400, 0.008);
+
+    target.blocks.forEach((block, index) => {
+      this.tweens.add({
+        targets: block,
+        alpha: 0,
+        y: block.y + 40,
+        angle: (index % 2 ? 1 : -1) * 45,
+        duration: 500,
+        delay: index * 40,
+        ease: "Quad.easeIn",
+        onComplete: () => block.destroy(),
+      });
+    });
+    target.blocks = [];
+
+    this.showBreakoutNotice(wasResistance);
+  }
+
+  /**
+   * Say what just happened, in words that need no trading knowledge.
+   *
+   * @param {boolean} wasResistance
+   */
+  showBreakoutNotice(wasResistance) {
+    const message = wasResistance
+      ? "PRICE BROKE THE CEILING - the wall came down"
+      : "PRICE BROKE THE FLOOR - the wall came down";
+
+    const notice = this.add
+      .text(600, 120, message, {
+        fontSize: "20px",
+        fill: wasResistance ? "#4ade80" : "#f87171",
+        fontFamily: "Pixelify Sans, Arial",
+        stroke: "#000000",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5)
+      .setDepth(1000);
+
+    this.tweens.add({
+      targets: notice,
+      alpha: 0,
+      y: 90,
+      duration: 2600,
+      ease: "Quad.easeOut",
+      onComplete: () => notice.destroy(),
+    });
+  }
+
+  /**
+   * Sideways push on a rocket, in pixels per second squared.
+   *
+   * Scales with how wide the buy/sell gap is compared with a normal market.
+   * Deliberately gentle: it should be felt as weather, not as the game taking
+   * the shot away from the player.
+   *
+   * @returns {number} positive pushes right, negative pushes left
+   */
+  marketWindAcceleration() {
+    if (!this.marketBook) return 0;
+
+    // Below this the market is behaving normally and there is no wind at all.
+    const CALM_SPREAD_PCT = 0.15;
+    const MAX_WIND = 60;
+
+    const excess = this.marketBook.spreadPct - CALM_SPREAD_PCT;
+    if (excess <= 0) return 0;
+
+    const strength = Math.min(1, excess / 0.6) * MAX_WIND;
+
+    // Blow towards whichever side is dearer: an expensive ask pushes right.
+    return this.lastTrade && this.lastTrade.side === "sell" ? -strength : strength;
   }
 
   /**
@@ -574,8 +740,9 @@ export class GameScene extends Phaser.Scene {
 
     const { side, quantity, price } = this.lastTrade;
     const book = this.describeBookHealth();
+    const wind = this.describeWind();
     this.marketTickerText.setText(
-      `${side === "buy" ? "BOUGHT" : "SOLD"} ${quantity} @ ${price}${book}`
+      `${side === "buy" ? "BOUGHT" : "SOLD"} ${quantity} @ ${price}${book}${wind}`
     );
     this.marketTickerText.setColor(side === "buy" ? "#4ade80" : "#f87171");
   }
@@ -754,6 +921,9 @@ export class GameScene extends Phaser.Scene {
 
       // Removed: displayMinimalPriceIndicator call (cleaner UI)
     });
+
+    // Each level has its own walls, so the breakout is armed afresh.
+    this.armBreakout();
 
     // Update total enemies count
     this.totalEnemiesInLevel = this.enemiesRemaining;
@@ -1248,6 +1418,11 @@ export class GameScene extends Phaser.Scene {
 
     // Set rocket physics properties
     rocket.setVelocity(velocityX, velocityY);
+
+    // A wide spread means an expensive, unsettled market, and the rocket feels
+    // it as a sideways push. Signalled on the HUD before the shot is taken -
+    // an unseen force acting on your aim reads as the game cheating.
+    rocket.setAccelerationX(this.marketWindAcceleration());
     rocket.setRotation(angleRad + Math.PI / 2); // Rotate rocket to match trajectory (+ π/2 for proper orientation)
     rocket.setBounce(0.1); // Reduced bounce for more realistic physics
     // Note: No setDrag() here - air resistance is handled in updateRocketPhysics()

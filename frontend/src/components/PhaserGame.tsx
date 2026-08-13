@@ -59,7 +59,10 @@ export default function PhaserGame({ onGameComplete }: PhaserGameProps) {
       window.rocketCandleGame = {
         isConnected: isAuthenticated,
         address: walletAddress,
-        onGameComplete: onGameComplete || (() => {}),
+        // Left undefined in practice mode. A no-op stub here would let the
+        // game announce it was submitting a score that goes nowhere.
+        onGameComplete,
+        practiceMode: !onGameComplete,
       };
     }
 
@@ -128,7 +131,9 @@ declare global {
     rocketCandleGame?: {
       isConnected: boolean;
       address: string | null;
-      onGameComplete: (score: number, level: number) => void;
+      // Absent in practice mode, where a finished run has nowhere to go.
+      onGameComplete?: (score: number, level: number) => void;
+      practiceMode: boolean;
     };
   }
 }
