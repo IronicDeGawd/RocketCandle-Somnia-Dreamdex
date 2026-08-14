@@ -256,19 +256,33 @@ export default function TradingSetup({
    * kept moving, so from that point the toggle disappears.
    */
   const holdsSomethingReal = authorized || Boolean(snapshot?.open);
-  const expanded = open || holdsSomethingReal;
 
   // Over the game until the player is actually in the market.
   const asOverlay = overlayUntilOpen && !snapshot?.open;
+
+  /*
+   * Once the player is in the market this stops being a form and becomes a
+   * readout, so it folds down to a strip rather than holding a 212px rail
+   * open with an explainer of a step already taken. The full panel is one
+   * click away, because arming the floor still lives inside it.
+   */
+  const inTheMarket = Boolean(snapshot?.open) && !asOverlay;
+  const expanded = inTheMarket ? open : open || holdsSomethingReal;
+
+  useEffect(() => {
+    if (snapshot?.open) setOpen(false);
+  }, [snapshot?.open]);
 
   const panel = (
     <section className={`ts-root${asOverlay ? " ts-root--overlay" : ""}`}>
       <div className="rc-panel ts-toggle-row">
         <div className="ts-toggle-copy">
-          <h2 className="rc-pixel ts-heading">Buy in to play</h2>
+          <h2 className="rc-pixel ts-heading">
+            {snapshot?.open ? "Your position" : "Buy in to play"}
+          </h2>
           <p className="ts-toggle-note">
             {snapshot?.open
-              ? "A position is open. This stays visible until it closes."
+              ? "Open in the market. It sells back when the run ends."
               : holdsSomethingReal
                 ? "Trading is on. Buy in to start a run."
                 : "Buying into this pair is how a run starts."}
@@ -276,7 +290,7 @@ export default function TradingSetup({
         </div>
         {/* No collapse control while this is the overlay: folding the panel
             away there would leave a stub over the game and no way into a run. */}
-        {!holdsSomethingReal && !asOverlay && (
+        {(inTheMarket || !holdsSomethingReal) && !asOverlay && (
           <button
             type="button"
             className="rc-btn rc-btn--primary"
@@ -284,10 +298,38 @@ export default function TradingSetup({
             aria-controls="trading-panel-body"
             onClick={() => setOpen((o) => !o)}
           >
-            {expanded ? "Close" : "Open"}
+            {expanded ? "Close" : inTheMarket ? "Open panel" : "Open"}
           </button>
         )}
       </div>
+
+      {inTheMarket && !expanded ? (
+        <div className="rc-panel ts-strip">
+          <div className="ts-strip-row">
+            <span className="rc-pixel ts-strip-label">POSITION</span>
+            <span className="rc-mono ts-strip-value">
+              {snapshot!.stake.toFixed(2)} USDso
+            </span>
+          </div>
+          <div className="ts-strip-row">
+            <span className="rc-pixel ts-strip-label">P&amp;L</span>
+            <span
+              className={`rc-mono ts-strip-value${
+                snapshot!.pnl < 0 ? " ts-strip-value--loss" : " ts-strip-value--gain"
+              }`}
+            >
+              {snapshot!.pnl >= 0 ? "+" : ""}
+              {snapshot!.pnl.toFixed(2)} ({snapshot!.pnlPct.toFixed(1)}%)
+            </span>
+          </div>
+          <div className="ts-strip-row">
+            <span className="rc-pixel ts-strip-label">FLOOR</span>
+            <span className="rc-mono ts-strip-value">
+              {stopResting ? "armed" : "not armed"}
+            </span>
+          </div>
+        </div>
+      ) : null}
 
       {expanded ? (
         <div id="trading-panel-body" className="rc-panel ts-panel">

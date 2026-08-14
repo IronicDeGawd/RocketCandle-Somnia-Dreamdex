@@ -344,3 +344,38 @@
 .ts-root--overlay {
   width: 100%;
 }
+
+/* --- Folded position readout ---------------------------------------------- */
+/*
+ * What the rail shows once the player is in the market. The full panel is an
+ * explainer of a step already taken, so holding a 212px column open with it
+ * costs game screen for nothing; this keeps the three numbers worth glancing
+ * at and puts the rest one click away.
+ */
+.ts-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+}
+
+.ts-strip-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ts-strip-label {
+  font-size: 9px;
+  color: var(--rc-text-faint);
+}
+
+.ts-strip-value {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* This palette has no green: gain is yellow everywhere else on the cabinet. */
+.ts-strip-value--gain { color: var(--rc-yellow); }
+.ts-strip-value--loss { color: var(--rc-red); }
