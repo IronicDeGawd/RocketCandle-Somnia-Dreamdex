@@ -1,5 +1,6 @@
 import type { WalletClient } from "viem";
 
+import { recordTrade } from "@/lib/attestation";
 import { USDSO_ADDRESS, type MarketMeta } from "@/lib/dreamdex";
 import {
   readTopOfBook,
@@ -197,9 +198,29 @@ export function buildTradingBridge({
    * of volume, which is what an exchange counts and what the navbar shows.
    */
   let volumeUsdso = restoreVolume(owner);
-  const addVolume = (amount: number) => {
+
+  /*
+   * Counted locally so the readout moves the instant a trade lands, and
+   * reported to the service so it survives a cleared cache and follows the
+   * wallet to another browser. The service checks the transaction happened
+   * before counting it, and its total wins when the two disagree.
+   */
+  const addVolume = (amount: number, txHash?: `0x${string}`) => {
     volumeUsdso += Math.abs(amount);
     rememberVolume(owner, volumeUsdso);
+
+    if (!txHash) return;
+    recordTrade(txHash, Math.abs(amount)).then((total) => {
+      if (!total) return;
+      volumeUsdso = total.volumeUsdso;
+      rememberVolume(owner, volumeUsdso);
+      if (typeof window !== "undefined") {
+        if (window.rocketCandleGame) {
+          window.rocketCandleGame.tradedVolume = volumeUsdso;
+        }
+        window.dispatchEvent(new CustomEvent("rc-hud"));
+      }
+    });
   };
   let stop: ArmedStop | null = null;
 
@@ -291,6 +312,7 @@ export function buildTradingBridge({
         entryPrice: bestBid,
         openedAt: Date.now(),
         openTxHash: RECOVERED_TX,
+        lastTxHash: RECOVERED_TX,
       };
 
       return publish({
@@ -309,7 +331,7 @@ export function buildTradingBridge({
 
       position = await openPosition(clients, market, owner, stakeUsdso);
       orderCount += 1;
-      addVolume(position.costUsdso);
+      addVolume(position.costUsdso, position.openTxHash);
 
       return publish({
         open: true,
@@ -333,7 +355,7 @@ export function buildTradingBridge({
         extraUsdso
       );
       orderCount += 1;
-      addVolume(extraUsdso);
+      addVolume(extraUsdso, position.lastTxHash);
 
       const marked = await markToMarket(clients, market, position);
 
@@ -357,7 +379,7 @@ export function buildTradingBridge({
 
       const result = await closePosition(clients, market, owner, position);
       orderCount += 1;
-      addVolume(result.proceedsUsdso);
+      addVolume(result.proceedsUsdso, result.txHash);
       position = null;
 
       publish(emptySnapshot(orderCount, volumeUsdso));

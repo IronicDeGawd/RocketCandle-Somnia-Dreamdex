@@ -32,6 +32,12 @@ export interface Position {
   entryPrice: number;
   openedAt: number;
   openTxHash: `0x${string}`;
+  /**
+   * The most recent buy, which is not the first one once a position is topped
+   * up. Anything counting trades by hash needs this: reusing the opening hash
+   * makes every top-up look like a repeat of the same trade.
+   */
+  lastTxHash: `0x${string}`;
 }
 
 export interface CloseResult {
@@ -158,6 +164,7 @@ export async function openPosition(
     entryPrice: costUsdso / filledQuantity,
     openedAt: Date.now(),
     openTxHash: result.txHash,
+    lastTxHash: result.txHash,
   };
 }
 
@@ -185,6 +192,7 @@ export async function addToPosition(
     quantity,
     costUsdso,
     entryPrice: costUsdso / quantity,
+    lastTxHash: added.openTxHash,
   };
 }
 

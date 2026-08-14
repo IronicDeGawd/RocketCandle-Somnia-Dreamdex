@@ -57,6 +57,35 @@ const request = async (path: string, body?: unknown) => {
   return data;
 };
 
+/**
+ * Tell the service about a trade, and get the running total back.
+ *
+ * The service checks the transaction really happened before counting it, so a
+ * page cannot simply claim a number. A failure here is not worth interrupting
+ * a run for - the trade itself already went through.
+ */
+export const recordTrade = async (
+  txHash: string,
+  amountUsdso: number
+): Promise<{ volumeUsdso: number; trades: number } | null> => {
+  try {
+    return await request("/api/volume", { txHash, amountUsdso });
+  } catch {
+    return null;
+  }
+};
+
+/** What this wallet has traded, according to the service. */
+export const fetchVolume = async (
+  address: string
+): Promise<{ volumeUsdso: number; trades: number } | null> => {
+  try {
+    return await request(`/api/volume/${address}`);
+  } catch {
+    return null;
+  }
+};
+
 /** Is there already a usable session for this wallet? */
 export async function getAttestationSession(): Promise<string | null> {
   try {

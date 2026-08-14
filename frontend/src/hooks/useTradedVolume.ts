@@ -1,15 +1,17 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { fetchVolume } from "@/lib/attestation";
 import { readStoredVolume } from "@/lib/tradingBridge";
 
 /**
  * How much money this player has moved through the exchange.
  *
- * The running total lives in the trading bridge, which only the game page
- * builds - so this reads what the bridge parks on the window, and falls back
- * to what this browser last recorded for the wallet. That fallback is what
- * makes the readout survive a refresh and appear on pages that never trade.
+ * Three sources, most trustworthy last: what this browser remembers, what the
+ * service has recorded, and what the live bridge has counted this session. The
+ * service is the durable one - a cleared cache or a second device wipes the
+ * browser's copy, and only the game page ever builds a bridge - so its figure
+ * replaces the local guess as soon as it arrives.
  */
 
 function subscribe(onChange: () => void) {
@@ -21,13 +23,34 @@ function subscribe(onChange: () => void) {
 export function useTradedVolume(address?: string | null): number {
   const live = useSyncExternalStore(
     subscribe,
-    () => (typeof window === "undefined" ? null : window.rocketCandleGame?.tradedVolume ?? null),
+    () =>
+      typeof window === "undefined"
+        ? null
+        : window.rocketCandleGame?.tradedVolume ?? null,
     () => null
   );
 
-  // Server render and first paint have no window, so the stored figure is read
-  // lazily rather than as the store's snapshot - a value that differed between
-  // server and client would tear on hydration.
-  if (live !== null) return live;
-  return typeof window === "undefined" ? 0 : readStoredVolume(address);
+  const [stored, setStored] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!address) {
+      setStored(null);
+      return;
+    }
+
+    // Show the browser's own figure immediately so the readout is never blank,
+    // then correct it with the service's.
+    setStored(readStoredVolume(address));
+
+    let cancelled = false;
+    fetchVolume(address).then((total) => {
+      if (!cancelled && total) setStored(total.volumeUsdso);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [address]);
+
+  return live ?? stored ?? 0;
 }

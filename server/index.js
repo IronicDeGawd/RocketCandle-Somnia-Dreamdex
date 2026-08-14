@@ -1,4 +1,6 @@
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -219,6 +221,106 @@ app.post("/api/runs/attest", requireAuth, async (req, res) => {
     console.error("Failed to sign run:", error);
     res.status(500).json({ error: "Could not sign this run" });
   }
+});
+
+// --- Traded volume ---------------------------------------------------------
+
+/*
+ * How much each wallet has moved through the exchange.
+ *
+ * On disk rather than in the browser: the browser copy dies with a cleared
+ * cache and never existed on a second device, so the figure a player sees
+ * would depend on where they happened to be sitting. On chain would be better
+ * still, but the RPC caps log queries at 900 blocks - about ninety seconds of
+ * history on this network - so rebuilding a running total that way is not
+ * possible without an indexer.
+ */
+const VOLUME_STORE =
+  process.env.VOLUME_STORE || path.join(process.cwd(), "data", "volume.json");
+
+/** { [wallet]: { volumeUsdso, trades, seen: [txHash] } } */
+let volumes = {};
+
+try {
+  volumes = JSON.parse(fs.readFileSync(VOLUME_STORE, "utf8"));
+} catch {
+  // No file yet is the normal first run, not an error.
+}
+
+const saveVolumes = () => {
+  try {
+    fs.mkdirSync(path.dirname(VOLUME_STORE), { recursive: true });
+    // Write beside the file and rename, so a crash mid-write cannot leave a
+    // truncated store that fails to parse on the next boot.
+    const temp = `${VOLUME_STORE}.tmp`;
+    fs.writeFileSync(temp, JSON.stringify(volumes));
+    fs.renameSync(temp, VOLUME_STORE);
+  } catch (error) {
+    console.error("Could not persist volume:", error.message);
+  }
+};
+
+const RPC_URL = process.env.RPC_URL || "https://dream-rpc.somnia.network";
+const provider = new ethers.JsonRpcProvider(RPC_URL);
+
+/** How many trades one wallet may have recorded. Bounds the stored history. */
+const MAX_SEEN = 500;
+
+app.get("/api/volume/:address", (req, res) => {
+  const key = String(req.params.address || "").toLowerCase();
+  const record = volumes[key];
+  res.json({
+    volumeUsdso: record?.volumeUsdso || 0,
+    trades: record?.trades || 0,
+  });
+});
+
+app.post("/api/volume", requireAuth, async (req, res) => {
+  const wallet = req.walletAddress.toLowerCase();
+  const txHash = String(req.body?.txHash || "");
+  const amount = Number(req.body?.amountUsdso);
+
+  if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+    return res.status(422).json({ error: "Not a transaction hash" });
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(422).json({ error: "Amount must be above zero" });
+  }
+
+  const record = volumes[wallet] || { volumeUsdso: 0, trades: 0, seen: [] };
+
+  // Counting the same trade twice is the easy way to inflate this, so a hash
+  // already recorded is accepted quietly and changes nothing.
+  if (record.seen.includes(txHash)) {
+    return res.json({ volumeUsdso: record.volumeUsdso, trades: record.trades });
+  }
+
+  /*
+   * The trade has to exist and have succeeded. Without this the figure is
+   * whatever a page cares to claim, which makes it worth nothing - and a
+   * reverted transaction produces a receipt just like a successful one, so
+   * the status is what has to be checked rather than the receipt's presence.
+   */
+  try {
+    const receipt = await provider.getTransactionReceipt(txHash);
+    if (!receipt) {
+      return res.status(422).json({ error: "No such transaction on chain" });
+    }
+    if (receipt.status !== 1) {
+      return res.status(422).json({ error: "That transaction failed" });
+    }
+  } catch (error) {
+    console.error("Could not verify trade:", error.message);
+    return res.status(503).json({ error: "Could not reach the chain" });
+  }
+
+  record.volumeUsdso = Number((record.volumeUsdso + amount).toFixed(6));
+  record.trades += 1;
+  record.seen = [...record.seen, txHash].slice(-MAX_SEEN);
+  volumes[wallet] = record;
+  saveVolumes();
+
+  res.json({ volumeUsdso: record.volumeUsdso, trades: record.trades });
 });
 
 app.get("/health", (req, res) => {
