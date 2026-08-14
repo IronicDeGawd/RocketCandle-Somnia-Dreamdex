@@ -16,6 +16,9 @@ const MONO_FONT = '"Geist Mono", monospace';
 
 const SHADOW_OFFSET = 5;
 
+/** Below this a buy is not worth making, and the exchange may refuse it. */
+const MIN_STAKE = 0.5;
+
 /**
  * MenuScene - Main menu with play button and last game score
  * Handles score persistence via localStorage
@@ -481,9 +484,11 @@ export class MenuScene extends Phaser.Scene {
 
     const label = this.marketLoading
       ? "LOADING MARKET"
-      : this.needsBuyIn()
-        ? "BUY IN TO PLAY"
-        : "PLAY GAME";
+      : this.buyingIn
+        ? "BUYING IN..."
+        : this.needsBuyIn()
+          ? "BUY IN AND PLAY"
+          : "PLAY GAME";
 
     this.playButton.text.setText(label);
   }
@@ -491,16 +496,26 @@ export class MenuScene extends Phaser.Scene {
   /**
    * Start the game
    */
-  startGame() {
+  /**
+   * Start a run, buying into the chosen pair as it starts.
+   *
+   * The purchase used to be a separate errand: a button on the side panel that
+   * spent real money before any run existed, so a player could convert their
+   * stake into tokens and never play - with no way back, because selling only
+   * happened when a run ended. Buying in IS starting a run, so it happens
+   * here, for the pair on screen, at the moment the player commits.
+   */
+  async startGame() {
     // Starting mid-fetch would drop the player onto the previous market's
     // terrain, which is worse than making them wait a moment.
     if (this.marketLoading) return;
 
-    // The buy-in is the start button. Outside practice, a run cannot begin
-    // until the player actually holds the pair they are about to play.
+    // A second press while the order is in flight would buy twice.
+    if (this.buyingIn) return;
+
     if (this.needsBuyIn()) {
-      this.sayBuyInFirst();
-      return;
+      const bought = await this.buyIntoPair();
+      if (!bought) return;
     }
 
     // Stop all sounds before transitioning
@@ -509,15 +524,67 @@ export class MenuScene extends Phaser.Scene {
     this.scene.start("GameScene");
   }
 
-  /** Point at the panel that opens a position. */
-  sayBuyInFirst() {
-    if (!this.marketStatusText) return;
-    this.marketStatusText.setText(
-      "buy into this pair on the right to start a run"
-    );
-    this.marketStatusText.setColor("#F6F740");
+  /**
+   * Put the vault's money into the pair on screen.
+   *
+   * @returns true when the position is open and the run may start
+   */
+  async buyIntoPair() {
+    const trading = window.rocketCandleGame?.trading;
+    if (!trading) {
+      this.saySetUpTradingFirst();
+      return false;
+    }
 
-    this.time.delayedCall(3200, () => this.reportMarketStatus());
+    this.buyingIn = true;
+    this.refreshPlayButton();
+
+    try {
+      // Stake whatever is actually in the vault. The player chose the amount
+      // when they funded it; asking again here would be asking twice.
+      const stake = await trading.vaultUsdso();
+
+      if (!stake || stake < MIN_STAKE) {
+        this.sayFundTheVault(stake ?? 0);
+        return false;
+      }
+
+      const opened = await trading.open(stake);
+      if (!opened) {
+        this.sayBuyFailed("the exchange refused the order");
+        return false;
+      }
+
+      return true;
+    } catch (e) {
+      this.sayBuyFailed(e?.message ?? "the order did not go through");
+      return false;
+    } finally {
+      this.buyingIn = false;
+      this.refreshPlayButton();
+    }
+  }
+
+  /** Say something on the status line, then let it fall back. */
+  saySomething(text, color = "#F6F740") {
+    if (!this.marketStatusText) return;
+    this.marketStatusText.setText(text);
+    this.marketStatusText.setColor(color);
+    this.time.delayedCall(3800, () => this.reportMarketStatus());
+  }
+
+  saySetUpTradingFirst() {
+    this.saySomething("set trading up on the right to play for real");
+  }
+
+  sayFundTheVault(held) {
+    this.saySomething(
+      `fund the vault on the right - it holds ${held.toFixed(2)} usdso`
+    );
+  }
+
+  sayBuyFailed(why) {
+    this.saySomething(`could not buy in: ${why}`, "#E94F37");
   }
 
   /**

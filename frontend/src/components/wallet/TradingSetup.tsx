@@ -84,8 +84,8 @@ export default function TradingSetup({
   const [stopBusy, setStopBusy] = useState(false);
   const [stopError, setStopError] = useState<string | null>(null);
   const [stopResting, setStopResting] = useState(false);
-  const [buyBusy, setBuyBusy] = useState(false);
-  const [buyError, setBuyError] = useState<string | null>(null);
+  const [sellBusy, setSellBusy] = useState(false);
+  const [sellError, setSellError] = useState<string | null>(null);
   const [vault, setVault] = useState<number | null>(null);
 
   /** How far the position may fall before it sells itself. */
@@ -183,34 +183,28 @@ export default function TradingSetup({
   }, [enable, refresh, symbol, amount]);
 
   /**
-   * Actually buy in.
+   * Sell the holding back to USDso, at any time.
    *
-   * Enabling trading only funds the vault and authorises this browser's key -
-   * it does not put the player in the market. Without this step the vault sits
-   * funded, the stop control reports that there is nothing to protect, and the
-   * eject and firepower keys have no position to act on. Everything downstream
-   * of here needs a position to exist first.
+   * Selling only ever happened when a run ended, so a purchase made outside a
+   * game had no exit at all: the money sat as tokens in the vault with nothing
+   * in the interface able to turn it back. Ejecting mid-run does the same
+   * thing, but a player who has not started a run cannot reach it.
    */
-  const handleBuyIn = useCallback(async () => {
+  const handleSellBack = useCallback(async () => {
     if (!bridge) return;
-    setBuyBusy(true);
-    setBuyError(null);
+    setSellBusy(true);
+    setSellError(null);
 
     try {
-      const stake = Number(amount);
-      if (!Number.isFinite(stake) || stake <= 0) {
-        setBuyError("Enter a stake above zero first.");
-        return;
-      }
-
-      const opened = await bridge.open(stake);
-      if (!opened) setBuyError("A position is already open.");
+      const result = await bridge.close();
+      if (!result) setSellError("There was nothing open to sell.");
+      await refresh();
     } catch (e) {
-      setBuyError((e as Error).message ?? "Could not take the position");
+      setSellError((e as Error).message ?? "Could not sell the position back");
     } finally {
-      setBuyBusy(false);
+      setSellBusy(false);
     }
-  }, [bridge, amount]);
+  }, [bridge, refresh]);
 
   const busy = step !== "idle" && step !== "ready";
   const setupIndex = SETUP_STEPS.findIndex((s) => s.key === step);
@@ -240,7 +234,6 @@ export default function TradingSetup({
   }, [authorized, vault]);
 
   const stakeWanted = Number(amount);
-  const stakeValid = amount.trim() !== "" && stakeWanted > 0;
 
   // Vault read back and genuinely short of the stake. Null means "not read
   // yet", which must not be mistaken for empty.
@@ -560,53 +553,27 @@ export default function TradingSetup({
                     {error ? <p className="ts-error">{error}</p> : null}
                   </div>
                 ) : !snapshot?.open ? (
+                  /*
+                   * Funding only. The purchase itself moved to the PLAY
+                   * button, because buying into a pair IS starting a run -
+                   * as a step of its own it let a player convert their stake
+                   * into tokens and never play, with no way back.
+                   */
                   <div className="ts-stop">
-                    {/*
-                     * The stake field belongs here, not only in the funding
-                     * branch. It used to live there alone, so clearing it left
-                     * a player staring at "Buy in with  USDso" and "Enter a
-                     * stake above zero first" with nowhere on the panel to
-                     * enter one.
-                     */}
-                    <label className="ts-field">
-                      <span className="rc-pixel ts-field-label">
-                        Stake (USDso)
-                      </span>
-                      <div className="rc-well ts-stake-well">
-                        <input
-                          type="number"
-                          min="0.5"
-                          step="0.5"
-                          max={vault ?? undefined}
-                          value={amount}
-                          onChange={(e) => setAmount(e.target.value)}
-                          disabled={buyBusy}
-                          className="ts-stake-input"
-                        />
-                        <span className="ts-stake-unit">USDso</span>
-                      </div>
-                    </label>
-                    <p className="ts-note">
+                    <p className="ts-ready">
                       The vault holds{" "}
                       <span className="rc-mono">
                         {vault !== null ? vault.toFixed(2) : "…"} USDso
                       </span>
-                      . Buying in puts this stake into {symbol} for real — after
-                      that your rocket hits harder, the floor can be armed, and{" "}
-                      <span className="ts-key">E</span> ejects.
+                      , ready to play with.
                     </p>
-                    <button
-                      onClick={handleBuyIn}
-                      disabled={buyBusy || !stakeValid}
-                      className="rc-btn rc-btn--primary ts-btn-full"
-                    >
-                      {buyBusy
-                        ? "Buying in..."
-                        : stakeValid
-                          ? `Buy in with ${amount} USDso`
-                          : "Enter a stake"}
-                    </button>
-                    {buyError ? <p className="ts-error">{buyError}</p> : null}
+                    <p className="ts-note">
+                      Press PLAY on the cabinet to buy into {symbol} and start
+                      a run. Whatever is in the vault is what gets staked, so
+                      your rocket is as strong as what you put in. It sells
+                      back when the run ends, and{" "}
+                      <span className="ts-key">E</span> ejects early.
+                    </p>
                   </div>
                 ) : hasOpenStop ? (
                   <div className="ts-stop">
@@ -673,6 +640,26 @@ export default function TradingSetup({
                     with the tab closed.
                   </p>
                 )}
+
+                {snapshot?.open ? (
+                  <div className="ts-stop">
+                    <button
+                      onClick={handleSellBack}
+                      disabled={sellBusy}
+                      className="rc-btn rc-btn--primary ts-btn-full"
+                    >
+                      {sellBusy
+                        ? "Selling back..."
+                        : "Sell back to USDso"}
+                    </button>
+                    <p className="ts-note">
+                      Closes the holding and returns the money to the vault, at
+                      whatever it is worth now. A run does this for you when it
+                      ends; this is the way out when you are not playing.
+                    </p>
+                    {sellError ? <p className="ts-error">{sellError}</p> : null}
+                  </div>
+                ) : null}
 
                 <div className="ts-actions">
                   <button
