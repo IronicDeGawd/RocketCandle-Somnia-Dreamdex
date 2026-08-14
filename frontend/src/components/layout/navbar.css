@@ -111,6 +111,34 @@
   gap: 12px;
 }
 
+/* Traded volume, sitting beside the wallet because it is the same kind of
+   fact: something true about this account rather than about the page. Built
+   as a well rather than a button - there is nothing to press. */
+.nb-vol {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--rc-well);
+  border: 2px solid var(--rc-ink);
+}
+
+.nb-vol-label {
+  font-size: 9px;
+  color: var(--rc-text-faint);
+}
+
+.nb-vol-value {
+  font-size: 12px;
+  color: var(--rc-yellow);
+  font-variant-numeric: tabular-nums;
+}
+
+/* On a phone the wallet trigger and the links already fill the bar. */
+@media (max-width: 720px) {
+  .nb-vol { display: none; }
+}
+
 .nb-connect-btn {
   font-size: 10px;
   padding: 10px 16px;

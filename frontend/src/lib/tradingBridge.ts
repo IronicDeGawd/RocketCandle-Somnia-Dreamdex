@@ -49,6 +49,8 @@ export interface TradingSnapshot {
   pnlPct: number;
   /** How many real orders this run has placed. */
   orderCount: number;
+  /** USDso that has changed hands, buys and sells added together. */
+  volumeUsdso: number;
 }
 
 export interface TradingBridge {
@@ -130,14 +132,47 @@ export interface BuildBridgeOptions {
   onChange?: (snapshot: TradingSnapshot | null) => void;
 }
 
-const emptySnapshot = (orderCount: number): TradingSnapshot => ({
+const emptySnapshot = (
+  orderCount: number,
+  volumeUsdso = 0
+): TradingSnapshot => ({
   open: false,
   stake: 0,
   value: 0,
   pnl: 0,
   pnlPct: 0,
   orderCount,
+  volumeUsdso,
 });
+
+/*
+ * Volume outlives the page, because the player's total traded is a running
+ * count and not a property of one visit. Kept per wallet: a different account
+ * on the same browser has its own history and must not inherit this one's.
+ */
+export const VOLUME_KEY = "rc.volume.";
+
+/** What this wallet has traded, as last recorded on this browser. */
+export function readStoredVolume(owner: string | undefined | null): number {
+  if (!owner) return 0;
+  return restoreVolume(owner);
+}
+
+function restoreVolume(owner: string): number {
+  if (typeof window === "undefined") return 0;
+  const raw = window.localStorage?.getItem(VOLUME_KEY + owner.toLowerCase());
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function rememberVolume(owner: string, total: number) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage?.setItem(VOLUME_KEY + owner.toLowerCase(), String(total));
+  } catch {
+    // A browser refusing storage is not a reason to fail a trade.
+  }
+}
 
 /**
  * Build the bridge for one run.
@@ -154,6 +189,18 @@ export function buildTradingBridge({
 }: BuildBridgeOptions): TradingBridge {
   let position: Position | null = null;
   let orderCount = 0;
+
+  /*
+   * Money that has actually moved, buys and sells added together.
+   *
+   * Not the same as the stake: staking 1 USDso and selling it back is 2 USDso
+   * of volume, which is what an exchange counts and what the navbar shows.
+   */
+  let volumeUsdso = restoreVolume(owner);
+  const addVolume = (amount: number) => {
+    volumeUsdso += Math.abs(amount);
+    rememberVolume(owner, volumeUsdso);
+  };
   let stop: ArmedStop | null = null;
 
   const canRestStop = Boolean(market.stopRegistry && ownerWallet);
@@ -185,6 +232,11 @@ export function buildTradingBridge({
     // listens for the same event the HUD uses. Without this the play button
     // would still read BUY IN TO PLAY after the position had opened.
     if (typeof window !== "undefined") {
+      // Parked on the window so anything outside the game page - the navbar's
+      // volume readout - can read it without holding a bridge of its own.
+      if (window.rocketCandleGame) {
+        window.rocketCandleGame.tradedVolume = volumeUsdso;
+      }
       window.dispatchEvent(new CustomEvent("rc-hud"));
     }
 
@@ -248,6 +300,7 @@ export function buildTradingBridge({
         pnl: 0,
         pnlPct: 0,
         orderCount,
+        volumeUsdso,
       });
     },
 
@@ -256,6 +309,7 @@ export function buildTradingBridge({
 
       position = await openPosition(clients, market, owner, stakeUsdso);
       orderCount += 1;
+      addVolume(position.costUsdso);
 
       return publish({
         open: true,
@@ -264,6 +318,7 @@ export function buildTradingBridge({
         pnl: 0,
         pnlPct: 0,
         orderCount,
+        volumeUsdso,
       });
     },
 
@@ -278,6 +333,7 @@ export function buildTradingBridge({
         extraUsdso
       );
       orderCount += 1;
+      addVolume(extraUsdso);
 
       const marked = await markToMarket(clients, market, position);
 
@@ -288,6 +344,7 @@ export function buildTradingBridge({
         pnl: marked?.pnlUsdso ?? 0,
         pnlPct: marked?.pnlPct ?? 0,
         orderCount,
+        volumeUsdso,
       });
     },
 
@@ -300,14 +357,15 @@ export function buildTradingBridge({
 
       const result = await closePosition(clients, market, owner, position);
       orderCount += 1;
+      addVolume(result.proceedsUsdso);
       position = null;
 
-      publish(emptySnapshot(orderCount));
+      publish(emptySnapshot(orderCount, volumeUsdso));
       return { pnl: result.pnlUsdso, proceeds: result.proceedsUsdso };
     },
 
     async snapshot() {
-      if (!position) return emptySnapshot(orderCount);
+      if (!position) return emptySnapshot(orderCount, volumeUsdso);
 
       const marked = await markToMarket(clients, market, position);
       if (!marked) return null;
@@ -319,6 +377,7 @@ export function buildTradingBridge({
         pnl: marked.pnlUsdso,
         pnlPct: marked.pnlPct,
         orderCount,
+        volumeUsdso,
       });
     },
 

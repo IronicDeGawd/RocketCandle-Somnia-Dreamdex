@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from "@/app/providers";
+import { useTradedVolume } from "@/hooks/useTradedVolume";
 import SomniaLogo from "../ui/SomniaLogo";
 import "./navbar.css";
 
@@ -11,6 +12,7 @@ interface NavbarProps {
 
 const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
   const { connectWallet, signOut, isLoading, isAuthenticated, user, playerStats } = useApp();
+  const tradedVolume = useTradedVolume(user?.address);
 
   // The wallet dropdown and the mobile hamburger menu used to share one
   // boolean, so opening either one closed the other - a phone user could
@@ -122,6 +124,17 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
         </div>
 
         <div className="nb-actions">
+          {isAuthenticated ? (
+            /* What this wallet has moved through the exchange, buys and sells
+               added together - the same figure an exchange calls volume. */
+            <div className="nb-vol" title="USDso traded, buys and sells added together">
+              <span className="nb-vol-label rc-pixel">VOL</span>
+              <span className="nb-vol-value rc-mono">
+                {tradedVolume.toFixed(2)}
+              </span>
+            </div>
+          ) : null}
+
           {!isAuthenticated ? (
             <button
               onClick={connectWallet}

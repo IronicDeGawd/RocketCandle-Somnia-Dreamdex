@@ -156,6 +156,11 @@ declare global {
        * page, and the panel must buy the pair that becomes the terrain.
        */
       selectedMarket?: import("@/hooks/useGameHud").SelectedMarket;
+      /**
+       * USDso this wallet has moved through the exchange, buys and sells
+       * added together. Kept here so the navbar can show it from any page.
+       */
+      tradedVolume?: number;
     };
   }
 }
