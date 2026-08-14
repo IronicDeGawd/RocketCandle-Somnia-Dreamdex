@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSessionKey } from "@/hooks/useSessionKey";
 import { useTradingSession } from "@/hooks/useTradingSession";
 import "@/app/trading.css";
@@ -214,9 +214,30 @@ export default function TradingSetup({
   const showSetupProgress = !authorized && setupIndex !== -1;
   const hasOpenStop = Boolean(bridge?.canRestStop && snapshot?.open);
 
+  /*
+   * Once, when the vault is first read: bring an oversized default stake down
+   * to what is actually in there.
+   *
+   * The field defaults to 2, but a player who funded 1 was then shown the
+   * "fund the vault" branch over money already sitting in the vault - being
+   * asked to add more when the sensible move was to spend what was there.
+   */
+  const stakeClamped = useRef(false);
+  useEffect(() => {
+    if (stakeClamped.current || !authorized || vault === null || vault <= 0) {
+      return;
+    }
+    stakeClamped.current = true;
+    setAmount((current) =>
+      Number(current) > vault ? String(vault) : current
+    );
+  }, [authorized, vault]);
+
+  const stakeWanted = Number(amount);
+  const stakeValid = amount.trim() !== "" && stakeWanted > 0;
+
   // Vault read back and genuinely short of the stake. Null means "not read
   // yet", which must not be mistaken for empty.
-  const stakeWanted = Number(amount);
   const underfunded =
     vault !== null && Number.isFinite(stakeWanted) && vault < stakeWanted;
 
@@ -492,21 +513,50 @@ export default function TradingSetup({
                   </div>
                 ) : !snapshot?.open ? (
                   <div className="ts-stop">
+                    {/*
+                     * The stake field belongs here, not only in the funding
+                     * branch. It used to live there alone, so clearing it left
+                     * a player staring at "Buy in with  USDso" and "Enter a
+                     * stake above zero first" with nowhere on the panel to
+                     * enter one.
+                     */}
+                    <label className="ts-field">
+                      <span className="rc-pixel ts-field-label">
+                        Stake (USDso)
+                      </span>
+                      <div className="rc-well ts-stake-well">
+                        <input
+                          type="number"
+                          min="0.5"
+                          step="0.5"
+                          max={vault ?? undefined}
+                          value={amount}
+                          onChange={(e) => setAmount(e.target.value)}
+                          disabled={buyBusy}
+                          className="ts-stake-input"
+                        />
+                        <span className="ts-stake-unit">USDso</span>
+                      </div>
+                    </label>
                     <p className="ts-note">
-                      Your stake is deposited but not yet in the market. Buying
-                      in puts <span className="rc-mono">{amount} USDso</span>{" "}
-                      into {symbol} for real — after that your rocket hits
-                      harder, the floor can be armed, and{" "}
+                      The vault holds{" "}
+                      <span className="rc-mono">
+                        {vault !== null ? vault.toFixed(2) : "…"} USDso
+                      </span>
+                      . Buying in puts this stake into {symbol} for real — after
+                      that your rocket hits harder, the floor can be armed, and{" "}
                       <span className="ts-key">E</span> ejects.
                     </p>
                     <button
                       onClick={handleBuyIn}
-                      disabled={buyBusy}
+                      disabled={buyBusy || !stakeValid}
                       className="rc-btn rc-btn--primary ts-btn-full"
                     >
                       {buyBusy
                         ? "Buying in..."
-                        : `Buy in with ${amount} USDso`}
+                        : stakeValid
+                          ? `Buy in with ${amount} USDso`
+                          : "Enter a stake"}
                     </button>
                     {buyError ? <p className="ts-error">{buyError}</p> : null}
                   </div>
