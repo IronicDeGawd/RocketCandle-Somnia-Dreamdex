@@ -28,16 +28,17 @@ export default function PracticePage() {
         <div className="pr-banner-head">
           <h1 className="pr-banner-title rc-pixel">PRACTICE MODE</h1>
           <span className="rc-chip rc-chip--alert">
-            NOTHING RECORDED · NO WICK EARNED
+            TWO LEVELS · NOTHING RECORDED · NO WICK EARNED
           </span>
         </div>
         <div className="pr-banner-body">
           <p>
-            Real markets, real interruptions. Nothing you do here is written
-            to the chain.
+            The first two levels, on real market terrain, with the market
+            shaking the field exactly as it does in a full run. Nothing here
+            is written to the chain. A full run means buying into a pair.
           </p>
           <Link href="/" className="pr-banner-link">
-            Connect a wallet to play for keeps
+            Connect a wallet to buy in and play all seven
           </Link>
         </div>
       </div>

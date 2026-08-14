@@ -53,6 +53,14 @@ export interface TradingBridge {
   snapshot: () => Promise<TradingSnapshot | null>;
   /** What a round trip will cost in spread, before committing. */
   quoteCost: (stakeUsdso: number) => Promise<number | null>;
+  /**
+   * Is a position open right now, answered without a round trip?
+   *
+   * The menu has to know before it will start a run, and it asks from inside
+   * the canvas where nothing can await a promise mid-frame. Reads the same
+   * value the snapshot reports rather than keeping a second copy.
+   */
+  isOpen: () => boolean;
   /** Orders placed this run, and what they cost in fees. Always zero. */
   ordersPlaced: () => number;
   feesPaid: () => number;
@@ -146,12 +154,24 @@ export function buildTradingBridge({
 
   const publish = (snapshot: TradingSnapshot | null) => {
     onChange?.(snapshot);
+
+    // The menu scene lives in the canvas and cannot see React state, so it
+    // listens for the same event the HUD uses. Without this the play button
+    // would still read BUY IN TO PLAY after the position had opened.
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("rc-hud"));
+    }
+
     return snapshot;
   };
 
   return {
     enabled: true,
     symbol: market.symbol,
+
+    isOpen() {
+      return Boolean(position);
+    },
 
     async open(stakeUsdso) {
       if (position) return null;

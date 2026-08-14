@@ -55,6 +55,7 @@ export class MenuScene extends Phaser.Scene {
     // Let the player choose which market they play
     this.createMarketPicker();
     this.setUpMenuKeys();
+    this.watchForBuyIn();
 
     // Create play button
     this.playButton = this.createPixelButton(
@@ -97,6 +98,29 @@ export class MenuScene extends Phaser.Scene {
    * reach the game and never enter it. Enter or space starts; left and right
    * move between markets.
    */
+  /**
+   * Watch for the position opening, so the play button unlocks by itself.
+   *
+   * The buy happens in the page, outside this scene entirely. Without this the
+   * player would buy in and still be looking at a button that says BUY IN TO
+   * PLAY until they clicked something.
+   */
+  watchForBuyIn() {
+    if (typeof window === "undefined") return;
+
+    this.publishSelectedMarket();
+
+    const onChange = () => this.refreshPlayButton();
+    window.addEventListener("rc-hud", onChange);
+
+    this.events.once("shutdown", () =>
+      window.removeEventListener("rc-hud", onChange)
+    );
+    this.events.once("destroy", () =>
+      window.removeEventListener("rc-hud", onChange)
+    );
+  }
+
   setUpMenuKeys() {
     this.input.keyboard.on("keydown-ENTER", () => this.startGame());
     this.input.keyboard.on("keydown-SPACE", () => this.startGame());
@@ -337,6 +361,10 @@ export class MenuScene extends Phaser.Scene {
   reportMarketStatus() {
     if (!this.marketStatusText) return;
 
+    // The temporary notices below this panel recolour the same line, so the
+    // resting colour has to be restored here rather than assumed.
+    this.marketStatusText.setColor("#3F88C5");
+
     if (this.marketLoading) {
       this.marketStatusText.setText("READING THE MARKET...");
       return;
@@ -367,15 +395,24 @@ export class MenuScene extends Phaser.Scene {
   selectMarket(marketId) {
     if (this.marketLoading || marketId === this.selectedMarketId) return;
 
+    // Changing pairs while holding a position would leave the player owning
+    // one token and shooting at another's price history - the exact thing the
+    // whole design is built to avoid.
+    if (this.hasOpenPosition()) {
+      this.sayMarketLocked();
+      return;
+    }
+
     this.selectedMarketId = marketId;
     this.registry.set("selectedMarketId", marketId);
+    this.publishSelectedMarket();
     this.paintMarketChips();
 
     this.registry.set("marketRunLoading", true);
 
     MarketDataProvider.generateLiveGameLevels(marketId)
       .then((run) => {
-        this.registry.set("marketRun", run);
+        this.registry.set("marketRun", MarketDataProvider.capForPractice(run));
       })
       .catch(() => {
         this.registry.set("marketRun", null);
@@ -386,13 +423,66 @@ export class MenuScene extends Phaser.Scene {
   }
 
   /**
+   * Tell the React side which pair the player chose.
+   *
+   * The picker lives in the canvas but the trading panel lives in the page,
+   * and the panel has to buy the pair that is about to become the terrain.
+   * Uses the same window handle and event the HUD bridge uses rather than
+   * inventing a second channel.
+   */
+  publishSelectedMarket() {
+    if (typeof window === "undefined" || !window.rocketCandleGame) return;
+
+    const market = GAME_MARKETS.find((m) => m.id === this.selectedMarketId);
+    if (!market) return;
+
+    window.rocketCandleGame.selectedMarket = {
+      id: market.id,
+      symbol: market.symbol,
+      label: market.label,
+    };
+    window.dispatchEvent(new CustomEvent("rc-hud"));
+  }
+
+  /** Is the player holding a position right now? Practice runs never are. */
+  hasOpenPosition() {
+    if (typeof window === "undefined") return false;
+    const trading = window.rocketCandleGame?.trading;
+    return Boolean(trading?.isOpen?.());
+  }
+
+  /** Does this run need a buy-in before it can start? */
+  needsBuyIn() {
+    if (typeof window === "undefined") return false;
+    // A practice run is the taster and has no trading bridge at all.
+    if (window.rocketCandleGame?.practiceMode) return false;
+    return !this.hasOpenPosition();
+  }
+
+  /** Say why the picker refused, without moving anything on screen. */
+  sayMarketLocked() {
+    if (!this.marketStatusText) return;
+    this.marketStatusText.setText(
+      "sell your position before switching markets"
+    );
+    this.marketStatusText.setColor("#E94F37");
+
+    this.time.delayedCall(2600, () => this.reportMarketStatus());
+  }
+
+  /**
    * Keep the play button honest about whether a run is ready to start.
    */
   refreshPlayButton() {
     if (!this.playButton) return;
-    this.playButton.text.setText(
-      this.marketLoading ? "LOADING MARKET" : "PLAY GAME"
-    );
+
+    const label = this.marketLoading
+      ? "LOADING MARKET"
+      : this.needsBuyIn()
+        ? "BUY IN TO PLAY"
+        : "PLAY GAME";
+
+    this.playButton.text.setText(label);
   }
 
   /**
@@ -403,10 +493,28 @@ export class MenuScene extends Phaser.Scene {
     // terrain, which is worse than making them wait a moment.
     if (this.marketLoading) return;
 
+    // The buy-in is the start button. Outside practice, a run cannot begin
+    // until the player actually holds the pair they are about to play.
+    if (this.needsBuyIn()) {
+      this.sayBuyInFirst();
+      return;
+    }
+
     // Stop all sounds before transitioning
     this.sound.stopAll();
 
     this.scene.start("GameScene");
+  }
+
+  /** Point at the panel that opens a position. */
+  sayBuyInFirst() {
+    if (!this.marketStatusText) return;
+    this.marketStatusText.setText(
+      "buy into this pair on the right to start a run"
+    );
+    this.marketStatusText.setColor("#F6F740");
+
+    this.time.delayedCall(3200, () => this.reportMarketStatus());
   }
 
   /**

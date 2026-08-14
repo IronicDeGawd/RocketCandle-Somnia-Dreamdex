@@ -41,7 +41,10 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
   const { sessionKey, authorized, step, error, enable, revoke, withdrawAll } =
     useSessionKey();
   const { bridge, snapshot, refresh } = useTradingSession(symbol);
-  const [open, setOpen] = useState(false);
+  // Starts open. This panel used to be a door the player could ignore; it is
+  // now the start button, so folding it away would hide the only way into a
+  // run behind a control captioned "Open".
+  const [open, setOpen] = useState(true);
   const [amount, setAmount] = useState("2");
   const [roundTripCost, setRoundTripCost] = useState<number | null>(null);
   const [stopTerms, setStopTerms] = useState<{
@@ -51,6 +54,8 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
   const [stopBusy, setStopBusy] = useState(false);
   const [stopError, setStopError] = useState<string | null>(null);
   const [stopResting, setStopResting] = useState(false);
+  const [buyBusy, setBuyBusy] = useState(false);
+  const [buyError, setBuyError] = useState<string | null>(null);
 
   /** How far the position may fall before it sells itself. */
   const FLOOR_DROP_PCT = 10;
@@ -130,6 +135,36 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
     await refresh();
   }, [enable, refresh, symbol, amount]);
 
+  /**
+   * Actually buy in.
+   *
+   * Enabling trading only funds the vault and authorises this browser's key -
+   * it does not put the player in the market. Without this step the vault sits
+   * funded, the stop control reports that there is nothing to protect, and the
+   * eject and firepower keys have no position to act on. Everything downstream
+   * of here needs a position to exist first.
+   */
+  const handleBuyIn = useCallback(async () => {
+    if (!bridge) return;
+    setBuyBusy(true);
+    setBuyError(null);
+
+    try {
+      const stake = Number(amount);
+      if (!Number.isFinite(stake) || stake <= 0) {
+        setBuyError("Enter a stake above zero first.");
+        return;
+      }
+
+      const opened = await bridge.open(stake);
+      if (!opened) setBuyError("A position is already open.");
+    } catch (e) {
+      setBuyError((e as Error).message ?? "Could not take the position");
+    } finally {
+      setBuyBusy(false);
+    }
+  }, [bridge, amount]);
+
   const busy = step !== "idle" && step !== "ready";
   const setupIndex = SETUP_STEPS.findIndex((s) => s.key === step);
   const showSetupProgress = !authorized && setupIndex !== -1;
@@ -142,13 +177,12 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
       : "Enable trading";
 
   /**
-   * The door belongs at the entrance to real money, not in front of it.
+   * Once there is anything real here, the panel stops being collapsible.
    *
-   * Before trading is enabled this panel is genuinely optional and folds away.
-   * Once a key is authorised - and certainly once a position is open - folding
-   * it away would hide the stop controls and the running profit and loss
-   * behind a box captioned "optional", while the market keeps moving. So from
-   * that point on it stays open and the toggle disappears.
+   * A player may fold it away before they have committed anything. Once a key
+   * is authorised - and certainly once a position is open - folding it would
+   * hide the stop controls and the running profit and loss while the market
+   * kept moving, so from that point the toggle disappears.
    */
   const holdsSomethingReal = authorized || Boolean(snapshot?.open);
   const expanded = open || holdsSomethingReal;
@@ -157,13 +191,13 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
     <section className="ts-root">
       <div className="rc-panel ts-toggle-row">
         <div className="ts-toggle-copy">
-          <h2 className="rc-pixel ts-heading">Play for keeps</h2>
+          <h2 className="rc-pixel ts-heading">Buy in to play</h2>
           <p className="ts-toggle-note">
             {snapshot?.open
               ? "A position is open. This stays visible until it closes."
               : holdsSomethingReal
-                ? "Trading is on."
-                : "Optional. Practice needs none of this."}
+                ? "Trading is on. Buy in to start a run."
+                : "Buying into this pair is how a run starts."}
           </p>
         </div>
         {!holdsSomethingReal && (
@@ -207,10 +241,11 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
 
           <div className="ts-body">
             <p className="ts-blurb">
-              Your stake buys the token you are playing, for real, on
-              DreamDEX. It sells back when the run ends, and you can eject at
-              any time with <span className="ts-key">E</span> without ending
-              your game.
+              Your stake buys the pair you are about to play, for real, on
+              DreamDEX. That purchase is how a run starts, and how much you
+              hold is how far your rocket reaches. It sells back when the run
+              ends, and <span className="ts-key">E</span> ejects at any time
+              without ending your game.
             </p>
 
             {!authorized ? (
@@ -274,8 +309,9 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
                       money</strong>.
                     </li>
                     <li>
-                      Three signatures now, then none — no wallet popups
-                      between shots.
+                      Three or four signatures now, then none — no wallet
+                      popups between shots. The fourth is only needed the
+                      first time you allow this market to take USDso.
                     </li>
                     <li>
                       If your position falls{" "}
@@ -321,7 +357,27 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
                   can trade for you, and nothing else.
                 </p>
 
-                {hasOpenStop ? (
+                {!snapshot?.open ? (
+                  <div className="ts-stop">
+                    <p className="ts-note">
+                      Your stake is deposited but not yet in the market. Buying
+                      in puts <span className="rc-mono">{amount} USDso</span>{" "}
+                      into {symbol} for real — after that your rocket hits
+                      harder, the floor can be armed, and{" "}
+                      <span className="ts-key">E</span> ejects.
+                    </p>
+                    <button
+                      onClick={handleBuyIn}
+                      disabled={buyBusy}
+                      className="rc-btn rc-btn--primary ts-btn-full"
+                    >
+                      {buyBusy
+                        ? "Buying in..."
+                        : `Buy in with ${amount} USDso`}
+                    </button>
+                    {buyError ? <p className="ts-error">{buyError}</p> : null}
+                  </div>
+                ) : hasOpenStop ? (
                   <div className="ts-stop">
                     {stopResting ? (
                       <>
@@ -381,8 +437,9 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
                   </div>
                 ) : (
                   <p className="ts-note">
-                    There is no open position to protect yet. The stop-loss
-                    control appears once you are in the market.
+                    A position is open. This market has no stop registry, so
+                    the floor is watched by this page only — it will not hold
+                    with the tab closed.
                   </p>
                 )}
 

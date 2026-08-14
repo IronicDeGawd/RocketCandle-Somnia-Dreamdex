@@ -1,10 +1,12 @@
 import { USDSO_ADDRESS, type MarketMeta } from "@/lib/dreamdex";
 import {
   ORDER_TYPE,
+  alignToTick,
   fromRaw,
   placeOrder,
   readTopOfBook,
   readVaultBalance,
+  toRaw,
   OrderError,
   type TradingClients,
 } from "@/lib/orders";
@@ -58,12 +60,43 @@ export async function estimateRoundTripCost(
   market: MarketMeta,
   stakeUsdso: number
 ): Promise<RoundTripCost | null> {
-  const { spreadPct } = await readTopOfBook(clients, market);
-  if (spreadPct === null) return null;
+  const { bestBid, bestAsk, spreadPct } = await readTopOfBook(clients, market);
+  if (spreadPct === null || bestBid === null || bestAsk === null) return null;
+
+  // Quoting the raw spread here understated the real cost by about half.
+  //
+  // Two things widen it. Orders deliberately cross the touch by CROSS_BPS so
+  // they fill now instead of resting, and the crossed price is then snapped to
+  // a whole tick - and on a market whose tick is as large as its spread, that
+  // snap alone costs as much again. Measured on SOMI:USDso: the spread said
+  // 0.109% and a round trip actually cost 0.196%.
+  //
+  // So the estimate is built from the same prices the orders will really use,
+  // rather than from the touch they start at. A demo that quotes a cost it
+  // does not charge deserves to be caught.
+  const tickRaw = toRaw(Number(market.tickSize), market.quoteDecimals);
+
+  // Measured on a real round trip rather than reasoned: a buy sweeps up to its
+  // crossed limit and ends up paying it, while a sell fills against the bids
+  // already resting at the touch. So the entry is priced at the crossed and
+  // snapped limit, and the exit at the plain bid. That gave 0.218% against
+  // 0.196% actually paid - slightly cautious, which is the right direction for
+  // a number shown before someone commits money.
+  const buyRaw = alignToTick(
+    toRaw(bestAsk * (1 + CROSS_BPS / 10_000), market.quoteDecimals),
+    tickRaw,
+    "bid"
+  );
+
+  const buyPrice = fromRaw(buyRaw, market.quoteDecimals);
+  const sellPrice = bestBid;
+
+  // What a round trip gives up, as a fraction of what was put in.
+  const roundTripPct = buyPrice > 0 ? (buyPrice - sellPrice) / buyPrice : 0;
 
   return {
     spreadPct,
-    estimatedUsdso: stakeUsdso * (spreadPct / 100),
+    estimatedUsdso: Math.max(0, stakeUsdso * roundTripPct),
   };
 }
 

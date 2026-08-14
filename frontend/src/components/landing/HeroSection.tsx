@@ -10,14 +10,14 @@ const HeroSection = ({ onDashboard, onStartGame }: HeroSectionProps) => {
     <section className="lp-hero">
       <div className="lp-hero-content">
         <h1 className="rc-title lp-hero-title">
-          AIM A ROCKET
+          BUY A PAIR.
           <br />
-          ACROSS A <span className="lp-accent-yellow">MARKET</span>
+          GET A <span className="lp-accent-yellow">LEVEL</span>.
         </h1>
         <p className="lp-hero-copy">
-          Every barrier in the level is one candlestick from real trading.
-          Seven levels, three attempts each. Clear the enemies on top before
-          you run out.
+          Buy into a trading pair and its real price history becomes the level
+          you shoot through. Every barrier is one candlestick, the live market
+          shakes the field while you aim, and your stake is your firepower.
         </p>
 
         {/* Wallet Connection Section */}

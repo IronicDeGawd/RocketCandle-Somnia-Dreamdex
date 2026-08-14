@@ -5,6 +5,7 @@ import type { ReactNode, RefObject } from "react";
 import type { GameControls, GameHud as GameHudState } from "@/hooks/useGameHud";
 import GameHud from "./GameHud";
 import AimControls from "./AimControls";
+import MarketStrip from "./MarketStrip";
 // Imported here rather than from the page: /practice mounts this cabinet too,
 // and a stylesheet attached to one route left the other route unstyled.
 import "@/app/game.css";
@@ -81,6 +82,10 @@ export default function GameCabinet({
       </div>
 
       <AimControls hud={hud} controls={controls} />
+
+      {/* Under the frame, not beside it: the cabinet already claims the full
+          page width, and the design forbids a chart inside the play field. */}
+      <MarketStrip hud={hud} />
     </section>
   );
 }

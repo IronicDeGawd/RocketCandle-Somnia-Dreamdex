@@ -25,6 +25,21 @@ export interface TradingPositionHud {
   floorPct: number;
 }
 
+/** The price line a run was cut from, with the current level marked on it. */
+export interface MarketSeries {
+  /** Closing prices across every level, in order. */
+  series: number[];
+  /** First index of the current level within that line. */
+  from: number;
+  /** Last index of the current level within that line. */
+  to: number;
+  symbol: string;
+  label: string;
+  interval: string;
+  windowFrom: number | null;
+  mirrored: boolean;
+}
+
 export interface GameHud {
   score: number;
   totalAttempts: number;
@@ -52,10 +67,28 @@ export interface GameHud {
   autoLaunchSeconds: number | null;
   canLaunch: boolean;
   position: TradingPositionHud | null;
+  /**
+   * The run's whole price line, and which slice this level is.
+   *
+   * Republished only when the level changes, and null in practice, where the
+   * market strip is hidden.
+   */
+  marketSeries: MarketSeries | null;
+  /** Last traded price, or null when nothing has printed yet. */
+  currentPrice: number | null;
+  /** Whether the exchange feed is actually connected. */
+  marketFeedStatus: "live" | "connecting" | "offline";
   /** Orders placed this run. null when there is no trading bridge at all. */
   orders: number | null;
   /** Fees paid this run. null when there is no trading bridge at all. */
   fees: number | null;
+}
+
+/** The pair chosen on the menu, which is both the terrain and what gets bought. */
+export interface SelectedMarket {
+  id: string;
+  symbol: string;
+  label: string;
 }
 
 export interface GameControls {
@@ -86,6 +119,9 @@ export const EMPTY_HUD: GameHud = {
   position: null,
   orders: null,
   fees: null,
+  marketSeries: null,
+  currentPrice: null,
+  marketFeedStatus: "connecting",
 };
 
 function subscribe(callback: () => void) {
@@ -115,6 +151,29 @@ function getControlsServerSnapshot(): GameControls | null {
 /** The current HUD snapshot, re-rendering whenever the scene publishes a new one. */
 export function useGameHud(): GameHud {
   return useSyncExternalStore(subscribe, getHudSnapshot, getHudServerSnapshot);
+}
+
+function getMarketSnapshot(): SelectedMarket | null {
+  if (typeof window === "undefined") return null;
+  return window.rocketCandleGame?.selectedMarket ?? null;
+}
+
+function getMarketServerSnapshot(): SelectedMarket | null {
+  return null;
+}
+
+/**
+ * Which pair the menu is pointing at, or null before it has said.
+ *
+ * Shares the "rc-hud" subscription with the HUD rather than opening a second
+ * channel, because the menu publishes on the same event.
+ */
+export function useSelectedMarket(): SelectedMarket | null {
+  return useSyncExternalStore(
+    subscribe,
+    getMarketSnapshot,
+    getMarketServerSnapshot
+  );
 }
 
 /**

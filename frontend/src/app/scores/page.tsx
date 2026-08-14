@@ -70,7 +70,8 @@ function ListError({
 }
 
 export default function ScoresPage() {
-  const { isAuthenticated, user, playerStats } = useApp();
+  const { isAuthenticated, isLoading, user, playerStats, connectWallet } =
+    useApp();
   const router = useRouter();
   const [currentWeek, setCurrentWeek] = useState<number>(0);
 
@@ -138,12 +139,17 @@ export default function ScoresPage() {
     }
   }, [weekData]);
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      router.push("/");
-      return;
-    }
-  }, [isAuthenticated, router]);
+  // No redirect here, deliberately.
+  //
+  // This page used to bounce anyone without a connected wallet straight back
+  // to the landing page, which made the LEADERBOARD button look broken: you
+  // clicked it and arrived back where you started, with nothing said. It also
+  // fired on every refresh, because the wallet reconnects asynchronously and
+  // this ran while that was still in flight - so even a connected player was
+  // thrown out.
+  //
+  // The page still needs a wallet. It now says so and offers the connect
+  // button, instead of moving the player somewhere they did not ask to go.
 
   const formatLeaderboardData = (data: unknown[]): LeaderboardEntry[] => {
     if (!data) return [];
@@ -181,14 +187,45 @@ export default function ScoresPage() {
   // otherwise the panel would flash an empty state for a moment first.
   const leaderboardLoading = currentWeek === 0 || isLeaderboardLoading;
 
+  // A wallet reconnects asynchronously, so on a refresh this page cannot know
+  // yet whether anyone is signed in. Saying "connect a wallet" during that
+  // moment would accuse a connected player of being logged out, so the wait
+  // gets its own state.
+  if (isLoading) {
+    return (
+      <>
+        <Navbar onNavigate={handleNavigation} />
+        <main className="sc-page sc-gate">
+          <p className="rc-pixel rc-blink sc-gate-title">CHECKING WALLET</p>
+        </main>
+      </>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-center text-white">
-          <h1 className="text-2xl font-bold mb-4">Authentication Required</h1>
-          <p className="text-gray-400">Redirecting to home page...</p>
-        </div>
-      </div>
+      <>
+        <Navbar onNavigate={handleNavigation} />
+        <main className="sc-page sc-gate">
+          <h1 className="sc-title rc-title">LEADERBOARD</h1>
+          <p className="sc-gate-copy">
+            Weekly rankings are tied to a wallet, so this page needs yours
+            before it can show you where you stand.
+          </p>
+          <div className="sc-gate-actions">
+            <button
+              onClick={connectWallet}
+              disabled={isLoading}
+              className="rc-btn rc-btn--danger"
+            >
+              CONNECT WALLET
+            </button>
+            <button onClick={() => router.push("/")} className="rc-btn">
+              ← BACK
+            </button>
+          </div>
+        </main>
+      </>
     );
   }
 

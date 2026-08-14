@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test --import ./scripts/register-hook.mjs 'tests/*.test.ts'"
   },
   "dependencies": {
     "@noble/hashes": "^1.8.0",

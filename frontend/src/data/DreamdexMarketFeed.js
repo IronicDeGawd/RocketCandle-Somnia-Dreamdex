@@ -70,6 +70,17 @@ export const GAME_MARKETS = [
  */
 export const DEFAULT_MARKET_ID = "somi";
 
+/**
+ * The default market's trading pair, derived rather than repeated.
+ *
+ * The trading panel needs a symbol before the menu has published a choice.
+ * Writing "SOMI:USDso" there by hand is how the panel ended up buying one
+ * market while the player played another, so it is looked up here instead.
+ */
+export const DEFAULT_MARKET_SYMBOL = GAME_MARKETS.find(
+  (market) => market.id === DEFAULT_MARKET_ID
+).symbol;
+
 export const LEVEL_TIMEFRAMES = [
   { interval: "1m", windowsBack: 0 },
   { interval: "5m", windowsBack: 0 },

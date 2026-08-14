@@ -453,3 +453,69 @@
     padding-top: 88px;
   }
 }
+
+/* --- How a run works ------------------------------------------------------ */
+/* Numbered because it is a real sequence: each step needs the previous one to
+   have happened before it makes any sense. */
+
+.lp-run {
+  list-style: none;
+  margin: 0 0 44px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--rc-surface);
+  border: 4px solid var(--rc-ink);
+  box-shadow: var(--rc-shadow);
+}
+
+.lp-run-step {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 18px;
+  padding: 22px 24px;
+  align-items: start;
+}
+
+.lp-run-step + .lp-run-step {
+  border-top: 3px solid var(--rc-ink);
+}
+
+.lp-run-step:nth-child(even) {
+  background: var(--rc-well);
+}
+
+.lp-run-num {
+  font-size: 17px;
+  color: var(--rc-yellow);
+  padding-top: 2px;
+}
+
+.lp-run-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lp-run-title {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+.lp-run-copy {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.62;
+  color: var(--rc-text-soft);
+  max-width: 68ch;
+}
+
+@media (max-width: 640px) {
+  .lp-run-step {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 18px 18px;
+  }
+}

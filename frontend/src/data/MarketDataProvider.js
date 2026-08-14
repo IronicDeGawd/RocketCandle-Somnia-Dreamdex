@@ -171,6 +171,32 @@ export class MarketDataProvider {
     return this.LEVEL_CONFIGURATIONS.length;
   }
 
+  /** How much of a run a player gets without buying in. */
+  static TASTER_LEVELS = 2;
+
+  /**
+   * Cut a run down to the taster, if this is a practice run.
+   *
+   * Practice exists to show someone what the game is before they put money
+   * on a pair, not to be a complete free alternative to doing so. Two levels
+   * is enough to feel the terrain come from a real chart and to feel the
+   * market shake the field.
+   *
+   * The rest of the game reads its level count from this array's length, so
+   * capping it here is enough - the level pips, the HUD and the end of the run
+   * all follow without knowing anything about practice.
+   *
+   * @param {object|null} run as returned by generateLiveGameLevels
+   * @returns {object|null} the same run, possibly shortened
+   */
+  static capForPractice(run) {
+    if (!run || !Array.isArray(run.levels)) return run;
+    if (typeof window === "undefined") return run;
+    if (!window.rocketCandleGame?.practiceMode) return run;
+
+    return { ...run, levels: run.levels.slice(0, this.TASTER_LEVELS) };
+  }
+
   /**
    * Generate synthetic candlestick data for a specific level
    * @param {number} levelIndex - Index of the level

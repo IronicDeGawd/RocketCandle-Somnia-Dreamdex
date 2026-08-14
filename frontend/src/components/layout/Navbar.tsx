@@ -31,6 +31,25 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
     setIsMobileMenuOpen(false);
   };
 
+  /**
+   * Both PLAY and LEADERBOARD need a wallet. Rather than being switched off -
+   * a switched-off button cannot be clicked, so it can never say why it is
+   * switched off - they stay clickable and dimmed. Clicking one without a
+   * wallet opens the connect prompt, which is the thing the player needed to
+   * do anyway.
+   */
+  const walletGated = (page: 'game' | 'leaderboard') => () => {
+    if (!isAuthenticated) {
+      setIsMobileMenuOpen(false);
+      connectWallet();
+      return;
+    }
+    handleNavigation(page);
+  };
+
+  const gatedTitle = (what: string) =>
+    isAuthenticated ? undefined : `Connect a wallet to ${what}`;
+
   const formatAddress = (address: string) => {
     if (!address) return '';
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -87,14 +106,17 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
             HOME
           </button>
           <button
-            onClick={() => handleNavigation('game')}
-            className="nb-link rc-pixel"
-            disabled={!isAuthenticated}
-            title={!isAuthenticated ? 'Connect a wallet to play' : undefined}
+            onClick={walletGated('game')}
+            className={`nb-link rc-pixel${isAuthenticated ? '' : ' nb-link--locked'}`}
+            title={gatedTitle('play')}
           >
             PLAY
           </button>
-          <button onClick={() => handleNavigation('leaderboard')} className="nb-link rc-pixel">
+          <button
+            onClick={walletGated('leaderboard')}
+            className={`nb-link rc-pixel${isAuthenticated ? '' : ' nb-link--locked'}`}
+            title={gatedTitle('see the leaderboard')}
+          >
             LEADERBOARD
           </button>
         </div>
@@ -191,13 +213,17 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
             HOME
           </button>
           <button
-            onClick={() => handleNavigation('game')}
-            className="nb-mobile-link rc-pixel"
-            disabled={!isAuthenticated}
+            onClick={walletGated('game')}
+            className={`nb-mobile-link rc-pixel${isAuthenticated ? '' : ' nb-mobile-link--locked'}`}
+            title={gatedTitle('play')}
           >
             PLAY
           </button>
-          <button onClick={() => handleNavigation('leaderboard')} className="nb-mobile-link rc-pixel">
+          <button
+            onClick={walletGated('leaderboard')}
+            className={`nb-mobile-link rc-pixel${isAuthenticated ? '' : ' nb-mobile-link--locked'}`}
+            title={gatedTitle('see the leaderboard')}
+          >
             LEADERBOARD
           </button>
 
