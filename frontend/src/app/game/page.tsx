@@ -47,7 +47,14 @@ const PhaserGame = dynamic(() => import("@/components/PhaserGame"), {
 });
 
 export default function GamePage() {
-  const { isAuthenticated, user, playerStats, refreshPlayerStats } = useApp();
+  const {
+    isAuthenticated,
+    isLoading: walletLoading,
+    user,
+    playerStats,
+    refreshPlayerStats,
+    connectWallet,
+  } = useApp();
   const router = useRouter();
   const {
     notifications,
@@ -173,15 +180,21 @@ export default function GamePage() {
     }
   }, [receiptError, notifyError]);
 
+  /*
+   * No redirect here, deliberately.
+   *
+   * This used to bounce anyone without an authenticated wallet straight back to
+   * the landing page, and it ran on mount - before the wallet had finished
+   * reconnecting. So pressing PLAY with a perfectly good wallet connected threw
+   * the player back where they started, silently, and a refresh did the same.
+   * The leaderboard had the identical fault.
+   *
+   * The page needs a wallet. It now says so and offers to connect, instead of
+   * moving somebody somewhere they did not ask to go.
+   */
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push("/");
-      return;
-    }
-
-    // Record game start time
-    setGameStartTime(Date.now());
-  }, [isAuthenticated, router]);
+    if (isAuthenticated) setGameStartTime(Date.now());
+  }, [isAuthenticated]);
 
   const handleGameComplete = async (score: number, level: number) => {
     console.log("🎮 Game Complete called with:", { score, level });
@@ -393,14 +406,43 @@ export default function GamePage() {
 
   // Notifications are auto-cleared by the notification system
 
+  // A wallet reconnects asynchronously, so on a fresh load this page cannot
+  // know yet whether anyone is signed in. Telling a connected player to connect
+  // during that moment would be a lie, so the wait gets its own state.
+  if (walletLoading) {
+    return (
+      <>
+        <Navbar onNavigate={handleNavigation} />
+        <main className="gc-page gc-gate">
+          <p className="rc-pixel rc-blink gc-gate-title">CHECKING WALLET</p>
+        </main>
+      </>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-center text-white">
-          <h1 className="text-2xl font-bold mb-4">Authentication Required</h1>
-          <p className="text-gray-400">Redirecting to home page...</p>
-        </div>
-      </div>
+      <>
+        <Navbar onNavigate={handleNavigation} />
+        <main className="gc-page gc-gate">
+          <h1 className="rc-title gc-gate-heading">PLAY FOR KEEPS</h1>
+          <p className="gc-gate-copy">
+            A run starts by buying into a trading pair, so this page needs your
+            wallet. Practice is two levels and needs nothing at all.
+          </p>
+          <div className="gc-gate-actions">
+            <button
+              onClick={connectWallet}
+              className="rc-btn rc-btn--primary"
+            >
+              CONNECT WALLET
+            </button>
+            <a href="/practice" className="rc-btn">
+              PRACTICE RUN
+            </a>
+          </div>
+        </main>
+      </>
     );
   }
 

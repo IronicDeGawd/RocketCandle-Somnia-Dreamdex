@@ -141,8 +141,10 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
                 aria-controls="nb-wallet-dropdown"
               >
                 <span className="nb-status-dot" aria-hidden="true" />
+                {/* One line, not two. The display name is itself the shortened
+                    address, so showing both printed the same string twice. */}
                 <span className="nb-wallet-info">
-                  <span className="nb-wallet-name">{user?.displayName || 'Player'}</span>
+                  <span className="nb-wallet-name">WALLET</span>
                   <span className="nb-wallet-address rc-mono">
                     {formatAddress(user?.address || '')}
                   </span>

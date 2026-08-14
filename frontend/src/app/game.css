@@ -794,3 +794,38 @@
 .gc-status-dot--red {
   background: var(--rc-red);
 }
+
+/* --- Wallet gate ---------------------------------------------------------- */
+/* Shown instead of redirecting when this page has no wallet to work with. The
+   page you asked for stays on screen and says what it needs. */
+
+.gc-gate {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 60vh;
+  gap: 22px;
+}
+
+.gc-gate-title {
+  font-size: 13px;
+  color: var(--rc-blue);
+}
+
+.gc-gate-heading {
+  margin: 0;
+}
+
+.gc-gate-copy {
+  margin: 0;
+  max-width: 48ch;
+  line-height: 1.6;
+  color: var(--rc-text-soft);
+}
+
+.gc-gate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: center;
+}
