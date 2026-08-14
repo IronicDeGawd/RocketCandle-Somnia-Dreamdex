@@ -1,0 +1,322 @@
+/* ===========================================================================
+   Rocket Candle — design system
+   ---------------------------------------------------------------------------
+   The retro-console language: five colours, three typefaces, and one surface
+   rule. Imported last so it wins over the older stylesheets while the screens
+   are rebuilt one at a time.
+
+   The surface rule is the whole look, and it is worth stating once: every
+   raised thing has a 4px ink border, no corner radius at all, and a hard
+   offset shadow with no blur. Nothing is frosted, nothing has a gradient, and
+   nothing fades at its edges. A shadow here is a solid block of ink sitting
+   behind the panel, the way a sticker sits above a page.
+   =========================================================================== */
+
+:root {
+  /* --- The five colours ------------------------------------------------- */
+
+  /* The room the game sits in. */
+  --rc-base: #2a2d34;
+  /* Anything raised off the base: panels, cards, cabinet rails. */
+  --rc-surface: #22252b;
+  /* Recessed wells inside a panel: readout backings, tracks, code blocks. */
+  --rc-well: #1b1e23;
+  /* Ink. Every border, every shadow, and text on a bright fill. */
+  --rc-ink: #14161a;
+
+  /* Action and threat: launching, enemies, alerts, destructive controls. */
+  --rc-red: #e94f37;
+  /* What you are chasing: score, rising candles, the primary control. */
+  --rc-yellow: #f6f740;
+  /* The market speaking: provenance, the live ticker, falling candles. */
+  --rc-blue: #3f88c5;
+  /* Copy. */
+  --rc-white: #ffffff;
+
+  /* Copy at reduced presence. Opacity rather than more greys, so text always
+     sits on whatever surface it lands on without a matching variant. */
+  --rc-text: #ffffff;
+  --rc-text-soft: rgba(255, 255, 255, 0.7);
+  --rc-text-faint: rgba(255, 255, 255, 0.5);
+
+  /* --- The surface rule -------------------------------------------------- */
+
+  --rc-border: 4px solid var(--rc-ink);
+  --rc-border-thin: 3px solid var(--rc-ink);
+  /* Panels sit highest, buttons a little lower, small chips lower still. */
+  --rc-shadow: 8px 8px 0 var(--rc-ink);
+  --rc-shadow-mid: 5px 5px 0 var(--rc-ink);
+  --rc-shadow-low: 3px 3px 0 var(--rc-ink);
+
+  /* --- Type -------------------------------------------------------------- */
+
+  /* Titles, labels, buttons, score. Never body copy - it is a display face
+     and becomes unreadable below about 9px or beyond a short line. */
+  --rc-font-pixel: var(--font-press-start), "Courier New", monospace;
+  /* Prose. */
+  --rc-font-sans: var(--font-instrument-sans), system-ui, sans-serif;
+  /* Data: amounts, addresses, timestamps, anything the player might compare
+     down a column. */
+  --rc-font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* --- Motion ------------------------------------------------------------ */
+
+  --rc-press: 90ms steps(2, end);
+}
+
+/* The scanline wash. Two dark pixels every four, which reads as a CRT at any
+   zoom because it is a hard step rather than a gradient. */
+@keyframes rc-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0.15; }
+}
+
+/* ---------------------------------------------------------------------------
+   Overriding the previous look
+   ---------------------------------------------------------------------------
+   The old stylesheets are still loaded and still carry indigo, purple, gold,
+   frosted glass and rounded corners. Rather than leave half the app looking
+   like the old design while screens are rebuilt one by one, the legacy tokens
+   are remapped onto the new palette here. Screens that have not been rebuilt
+   yet come out in the right colours with the wrong layout, which is a far
+   better intermediate state than the reverse.
+   --------------------------------------------------------------------------- */
+
+:root {
+  --primary-blue: var(--rc-blue);
+  --primary-blue-dark: var(--rc-ink);
+  --primary-blue-light: var(--rc-blue);
+  --primary-purple: var(--rc-red);
+  --primary-purple-dark: var(--rc-red);
+
+  --accent-gold: var(--rc-yellow);
+  --accent-orange: var(--rc-red);
+  --accent-coral: var(--rc-red);
+  --accent-teal: var(--rc-blue);
+  --accent-blue: var(--rc-blue);
+
+  --success-green: var(--rc-yellow);
+  --success-green-dark: var(--rc-yellow);
+  --success-green-darker: var(--rc-yellow);
+  --warning-yellow: var(--rc-yellow);
+  --error-red: var(--rc-red);
+  --info-blue: var(--rc-blue);
+
+  --bg-primary: var(--rc-base);
+  --bg-secondary: var(--rc-base);
+  --bg-tertiary: var(--rc-base);
+  --bg-quaternary: var(--rc-base);
+  --bg-game: var(--rc-base);
+  --bg-card: var(--rc-surface);
+  --bg-card-hover: var(--rc-surface);
+
+  /* Glass becomes solid. The old values were translucent white; leaving them
+     translucent would let the scanlines show through every card and turn the
+     whole page into moire. */
+  --glass-bg: var(--rc-surface);
+  --glass-bg-hover: var(--rc-surface);
+  --glass-bg-strong: var(--rc-surface);
+  --glass-border: var(--rc-ink);
+  --glass-border-hover: var(--rc-ink);
+  --glass-border-strong: var(--rc-ink);
+
+  --text-primary: var(--rc-text);
+  --text-secondary: var(--rc-text);
+  --text-tertiary: var(--rc-text-soft);
+  --text-muted: var(--rc-text-soft);
+  --text-disabled: var(--rc-text-faint);
+  --text-address: var(--rc-blue);
+  --text-rank: var(--rc-yellow);
+  --text-score: var(--rc-yellow);
+
+  --font-family-primary: var(--rc-font-sans);
+  --font-family-secondary: var(--rc-font-sans);
+  --font-family-mono: var(--rc-font-mono);
+
+  /* The previous display face is gone. Anything still asking for it by name
+     gets the pixel face rather than falling through to a system default. */
+  --font-pixelify-sans: var(--font-press-start);
+}
+
+/* Nothing in this language has rounded corners or blurred edges. Applied
+   broadly and deliberately: it is faster and more reliable than hunting every
+   radius through 3,900 lines of older CSS, and there is no case where a
+   rounded corner is wanted. */
+*,
+*::before,
+*::after {
+  border-radius: 0 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body {
+  background: var(--rc-base);
+  /* The wash sits on the body rather than a fixed overlay so it scrolls with
+     the page and never covers an interactive element. */
+  background-image: linear-gradient(
+    rgba(20, 22, 26, 0.18) 2px,
+    transparent 2px
+  );
+  background-size: 100% 4px;
+  background-attachment: fixed;
+  color: var(--rc-text);
+  font-family: var(--rc-font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--rc-yellow);
+  text-decoration: none;
+  border-bottom: 2px solid var(--rc-yellow);
+}
+
+a:hover {
+  color: var(--rc-white);
+  border-bottom-color: var(--rc-white);
+}
+
+/* ---------------------------------------------------------------------------
+   Primitives
+   --------------------------------------------------------------------------- */
+
+/* A raised panel. The base of nearly every block on every screen. */
+.rc-panel {
+  background: var(--rc-surface);
+  border: var(--rc-border);
+  box-shadow: var(--rc-shadow);
+  display: flex;
+  flex-direction: column;
+}
+
+/* A panel's title bar: a solid colour band with pixel type sitting on it.
+   Colour the band by meaning - blue for market, red for warning, yellow for
+   the thing being pursued. */
+.rc-panel-head {
+  background: var(--rc-blue);
+  color: var(--rc-ink);
+  font-family: var(--rc-font-pixel);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  padding: 9px 12px;
+}
+
+.rc-panel-head--warn { background: var(--rc-red); color: var(--rc-white); }
+.rc-panel-head--gain { background: var(--rc-yellow); color: var(--rc-ink); }
+
+.rc-panel-body {
+  padding: 18px 16px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* A recessed well: readouts, tracks, anything that should read as cut into
+   the panel rather than sitting on it. Inset shadow instead of an offset one. */
+.rc-well {
+  background: var(--rc-well);
+  border: var(--rc-border-thin);
+  padding: 12px 14px;
+}
+
+/* --- Buttons ------------------------------------------------------------ */
+
+.rc-btn {
+  font-family: var(--rc-font-pixel);
+  font-size: 11px;
+  line-height: 1;
+  padding: 12px 18px;
+  border: var(--rc-border);
+  box-shadow: var(--rc-shadow-mid);
+  background: var(--rc-surface);
+  color: var(--rc-white);
+  cursor: pointer;
+  /* Stepped rather than eased: this language has no soft motion in it. */
+  transition: transform var(--rc-press), box-shadow var(--rc-press);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+}
+
+/* Pressing moves the button onto its own shadow, so the travel is the shadow
+   distance exactly. Nothing scales and nothing fades. */
+.rc-btn:active:not(:disabled) {
+  transform: translate(5px, 5px);
+  box-shadow: 0 0 0 var(--rc-ink);
+}
+
+.rc-btn:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 6px 6px 0 var(--rc-ink);
+}
+
+.rc-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: var(--rc-shadow-low);
+}
+
+.rc-btn--primary { background: var(--rc-yellow); color: var(--rc-ink); }
+.rc-btn--danger { background: var(--rc-red); color: var(--rc-white); }
+
+/* Keyboard focus has to survive a design with no radius and no glow, so it is
+   a solid offset ring in the one colour nothing else uses for outlines. */
+.rc-btn:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 3px solid var(--rc-yellow);
+  outline-offset: 3px;
+}
+
+/* --- Type helpers ------------------------------------------------------- */
+
+.rc-pixel {
+  font-family: var(--rc-font-pixel);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+.rc-mono {
+  font-family: var(--rc-font-mono);
+  letter-spacing: 0.06em;
+}
+
+/* A pixel title with ink stacked behind it. Used once per screen at most -
+   it is loud by design and stops meaning anything if repeated. */
+.rc-title {
+  font-family: var(--rc-font-pixel);
+  font-weight: 400;
+  line-height: 1.38;
+  text-shadow: 6px 6px 0 var(--rc-ink);
+  margin: 0;
+  text-wrap: pretty;
+}
+
+/* A small pixel badge, for status and section markers. */
+.rc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--rc-font-pixel);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  padding: 8px 12px;
+  border: var(--rc-border-thin);
+  box-shadow: var(--rc-shadow-low);
+  background: var(--rc-surface);
+  color: var(--rc-white);
+}
+
+.rc-chip--live { background: var(--rc-blue); color: var(--rc-ink); }
+.rc-chip--alert { background: var(--rc-red); color: var(--rc-white); }
+.rc-chip--gain { background: var(--rc-yellow); color: var(--rc-ink); }
+
+/* A blinking element, for anything actively waiting on the network. Steps
+   rather than a fade, so it reads as a cursor rather than a pulse. */
+.rc-blink { animation: rc-blink 1s steps(1, end) infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rc-blink { animation: none; }
+  .rc-btn { transition: none; }
+}
