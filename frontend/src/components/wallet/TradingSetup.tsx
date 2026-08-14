@@ -202,6 +202,12 @@ export default function TradingSetup({
   const showSetupProgress = !authorized && setupIndex !== -1;
   const hasOpenStop = Boolean(bridge?.canRestStop && snapshot?.open);
 
+  // Vault read back and genuinely short of the stake. Null means "not read
+  // yet", which must not be mistaken for empty.
+  const stakeWanted = Number(amount);
+  const underfunded =
+    vault !== null && Number.isFinite(stakeWanted) && vault < stakeWanted;
+
   const enableLabel = busy
     ? STEP_LABELS[step] ?? "Working..."
     : error
@@ -394,7 +400,54 @@ export default function TradingSetup({
                   can trade for you, and nothing else.
                 </p>
 
-                {!snapshot?.open ? (
+                {!snapshot?.open && underfunded ? (
+                  /*
+                   * Authorised but the vault cannot cover the stake.
+                   *
+                   * Reachable whenever the deposit failed while the other three
+                   * setup steps succeeded - and there was no way out of it,
+                   * because funding the vault only happened in a step that is
+                   * hidden once the key is authorised. The buy-in button was
+                   * the only thing on offer and it could not possibly work.
+                   */
+                  <div className="ts-stop">
+                    <label className="ts-field">
+                      <span className="rc-pixel ts-field-label">
+                        Stake (USDso)
+                      </span>
+                      <div className="rc-well ts-stake-well">
+                        <input
+                          type="number"
+                          min="0.5"
+                          step="0.5"
+                          value={amount}
+                          onChange={(e) => setAmount(e.target.value)}
+                          disabled={busy}
+                          className="ts-stake-input"
+                        />
+                        <span className="ts-stake-unit">USDso</span>
+                      </div>
+                    </label>
+                    <p className="ts-note">
+                      The vault holds{" "}
+                      <span className="rc-mono">
+                        {vault !== null ? vault.toFixed(2) : "…"} USDso
+                      </span>
+                      , which is short of this stake. Fund it and the buy-in
+                      opens up.
+                    </p>
+                    <button
+                      onClick={handleEnable}
+                      disabled={busy}
+                      className="rc-btn rc-btn--primary ts-btn-full"
+                    >
+                      {busy
+                        ? STEP_LABELS[step] ?? "Working..."
+                        : `Fund the vault with ${amount} USDso`}
+                    </button>
+                    {error ? <p className="ts-error">{error}</p> : null}
+                  </div>
+                ) : !snapshot?.open ? (
                   <div className="ts-stop">
                     <p className="ts-note">
                       Your stake is deposited but not yet in the market. Buying
