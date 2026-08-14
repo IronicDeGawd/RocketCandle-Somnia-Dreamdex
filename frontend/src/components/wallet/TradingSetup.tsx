@@ -16,6 +16,9 @@ import "@/app/trading.css";
  * player who never opens it never sees a form.
  */
 
+/** Below this a buy is not worth making, and the exchange may refuse it. */
+const MIN_STAKE = 0.5;
+
 const STEP_LABELS: Record<string, string> = {
   "switching-network": "Switching to Somnia...",
   fuelling: "Sending the browser key its order fees...",
@@ -228,9 +231,12 @@ export default function TradingSetup({
       return;
     }
     stakeClamped.current = true;
-    setAmount((current) =>
-      Number(current) > vault ? String(vault) : current
-    );
+
+    // Only down to something actually tradeable. Clamping to whatever is in
+    // there turned leftover dust into a stake of 0.0032, and a buy that small
+    // is below the exchange's minimum - an offer that could only ever fail.
+    if (vault < MIN_STAKE) return;
+    setAmount((current) => (Number(current) > vault ? String(vault) : current));
   }, [authorized, vault]);
 
   const stakeWanted = Number(amount);

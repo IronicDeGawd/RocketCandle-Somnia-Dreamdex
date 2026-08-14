@@ -24,6 +24,7 @@ const SOMI_MARKET: MarketMeta = {
   symbol: "SOMI:USDso",
   pool: "0x259fD6559214dd5aD3752322426eA9F9fABEFff4",
   stopRegistry: "0xEb97349Aa62A68507c0bE535eD88B0d028a47E1e",
+  base: "0x28f34DeFd2b4CB48d9eE6d89f2Be4Bc601694c00",
   baseIsNative: false,
   baseDecimals: 18,
   quoteDecimals: 18,

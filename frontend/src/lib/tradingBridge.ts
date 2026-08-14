@@ -1,7 +1,11 @@
 import type { WalletClient } from "viem";
 
 import { USDSO_ADDRESS, type MarketMeta } from "@/lib/dreamdex";
-import { readVaultBalance, type TradingClients } from "@/lib/orders";
+import {
+  readTopOfBook,
+  readVaultBalance,
+  type TradingClients,
+} from "@/lib/orders";
 import {
   armStopLoss,
   cancelStop,
@@ -24,6 +28,14 @@ import {
  * keys and the connection. This is the narrow surface between them, so trading
  * never leaks into the game loop and the game never touches a key.
  */
+
+/*
+ * Stands in for the transaction that opened a recovered holding. That hash is
+ * gone with the page that placed the order; nothing reads it back, and a
+ * recognisable placeholder beats a plausible-looking wrong hash.
+ */
+const RECOVERED_TX =
+  "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
 
 export interface TradingSnapshot {
   /** Is there a live position right now? */
@@ -63,6 +75,18 @@ export interface TradingBridge {
   isOpen: () => boolean;
   /** USDso sitting in the exchange vault, ready to trade with. */
   vaultUsdso: () => Promise<number>;
+  /** Base tokens sitting in the vault - a buy that this page has forgotten. */
+  vaultBase: () => Promise<number>;
+  /**
+   * Adopt a holding the vault already has.
+   *
+   * The position only ever lived in this closure, so a refresh forgot it while
+   * the tokens stayed on chain: the panel offered to buy in again over a vault
+   * that held no quote currency, and the holding could not be sold because
+   * nothing in the app believed it existed. Returns the recovered snapshot, or
+   * null when the vault genuinely holds nothing.
+   */
+  recover: () => Promise<TradingSnapshot | null>;
   /** Orders placed this run, and what they cost in fees. Always zero. */
   ordersPlaced: () => number;
   feesPaid: () => number;
@@ -177,6 +201,54 @@ export function buildTradingBridge({
 
     async vaultUsdso() {
       return readVaultBalance(clients, market, owner, USDSO_ADDRESS);
+    },
+
+    async vaultBase() {
+      return readVaultBalance(clients, market, owner, market.base, "base");
+    },
+
+    async recover() {
+      if (position) return null;
+
+      const quantity = await readVaultBalance(
+        clients,
+        market,
+        owner,
+        market.base,
+        "base"
+      );
+
+      // Below the exchange's own minimum there is nothing sellable there -
+      // treating leftover dust as a position would offer a sale that reverts.
+      if (quantity < Number(market.minQuantity)) return null;
+
+      // What a seller would actually get, not a midpoint nobody trades at.
+      const { bestBid } = await readTopOfBook(clients, market);
+      if (!bestBid) return null;
+
+      /*
+       * The entry price is gone with the page that knew it, so this marks the
+       * holding at what it is worth now. Profit therefore restarts from zero
+       * on a recovered position - honest about being unknown rather than
+       * inventing a number, and the holding becomes sellable either way.
+       */
+      position = {
+        symbol: market.symbol,
+        quantity,
+        costUsdso: quantity * bestBid,
+        entryPrice: bestBid,
+        openedAt: Date.now(),
+        openTxHash: RECOVERED_TX,
+      };
+
+      return publish({
+        open: true,
+        stake: position.costUsdso,
+        value: position.costUsdso,
+        pnl: 0,
+        pnlPct: 0,
+        orderCount,
+      });
     },
 
     async open(stakeUsdso) {

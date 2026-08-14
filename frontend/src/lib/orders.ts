@@ -380,7 +380,16 @@ export async function readVaultBalance(
   clients: TradingClients,
   market: MarketMeta,
   owner: `0x${string}`,
-  token: `0x${string}`
+  token: `0x${string}`,
+  /**
+   * Which side of the pair the token is.
+   *
+   * The two sides can carry different decimals, and this decoded everything
+   * as the quote side - so a base balance came back scaled wrong on any market
+   * whose sides disagree. Quote by default, because that is every caller that
+   * existed before the base side had to be read at all.
+   */
+  side: "quote" | "base" = "quote"
 ): Promise<number> {
   const raw = await clients.publicClient.readContract({
     address: market.pool,
@@ -389,5 +398,8 @@ export async function readVaultBalance(
     args: [owner, token],
   });
 
-  return fromRaw(raw, market.quoteDecimals);
+  return fromRaw(
+    raw,
+    side === "base" ? market.baseDecimals : market.quoteDecimals
+  );
 }

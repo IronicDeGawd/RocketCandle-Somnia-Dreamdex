@@ -159,6 +159,15 @@ export interface MarketMeta {
    * a missing one as "stops unavailable here" instead of a bug.
    */
   stopRegistry: `0x${string}` | null;
+  /**
+   * The base side's address, as the exchange records it.
+   *
+   * Kept because the vault holds base and quote separately: after a buy, the
+   * money is base, and reading only the quote side makes a funded account look
+   * empty. Native markets use the sentinel address, which is what the pool
+   * itself keys the balance by.
+   */
+  base: `0x${string}`;
   /** True when the base side is the chain's own coin rather than a token. */
   baseIsNative: boolean;
   baseDecimals: number;
@@ -198,6 +207,7 @@ export async function fetchMarket(
     symbol: market.symbol,
     pool: market.contract,
     stopRegistry: market.stopRegistry ?? null,
+    base: market.base as `0x${string}`,
     baseIsNative:
       String(market.base).toLowerCase() === NATIVE_SENTINEL.toLowerCase(),
     baseDecimals: Number(market.baseDecimals),

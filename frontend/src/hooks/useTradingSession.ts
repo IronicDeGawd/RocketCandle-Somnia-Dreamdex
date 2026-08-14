@@ -47,16 +47,26 @@ export function useTradingSession(symbol: string) {
       setMarket(meta);
 
       const clients = createTradingClients(key.privateKey);
-      setBridge(
-        buildTradingBridge({
-          clients,
-          market: meta,
-          owner: address,
-          ownerWallet,
-          onChange: setSnapshot,
-        })
-      );
+      const built = buildTradingBridge({
+        clients,
+        market: meta,
+        owner: address,
+        ownerWallet,
+        onChange: setSnapshot,
+      });
+      setBridge(built);
       setError(null);
+
+      /*
+       * Pick up a holding this page has forgotten.
+       *
+       * The position lived only inside the bridge closure, so a refresh lost
+       * it while the tokens stayed in the vault on chain. The panel then read
+       * the quote side, saw the money gone, and offered to buy in again over a
+       * holding it could no longer sell. The chain is the only honest answer,
+       * so it is asked on every build.
+       */
+      await built.recover().catch(() => null);
     } catch (e) {
       setBridge(null);
       setError((e as Error).message ?? "Could not prepare trading");
