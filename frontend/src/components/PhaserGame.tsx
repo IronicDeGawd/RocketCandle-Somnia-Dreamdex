@@ -1,22 +1,31 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as Phaser from "phaser";
 import { PreloadScene } from "@/scenes/PreloadScene.js";
 import { MenuScene } from "@/scenes/MenuScene.js";
 import { GameScene } from "@/scenes/GameScene.js";
 import { EndGameScene } from "@/scenes/EndGameScene.js";
 import { useApp } from "@/app/providers";
+import { useGameControls, useGameHud } from "@/hooks/useGameHud";
+import GameCabinet from "@/components/game/GameCabinet";
 
 export interface PhaserGameProps {
   onGameComplete?: (score: number, level: number) => void;
+  /** Rendered where the 1A mock puts the trading door - the right rail. */
+  tradingSlot?: ReactNode;
 }
 
-export default function PhaserGame({ onGameComplete }: PhaserGameProps) {
+export default function PhaserGame({
+  onGameComplete,
+  tradingSlot,
+}: PhaserGameProps) {
   const gameRef = useRef<Phaser.Game | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const { walletAddress, isAuthenticated } = useApp();
+  const { walletAddress, isAuthenticated, playerStats } = useApp();
+  const hud = useGameHud();
+  const controls = useGameControls();
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -87,41 +96,16 @@ export default function PhaserGame({ onGameComplete }: PhaserGameProps) {
   }, [isAuthenticated, walletAddress]);
 
   return (
-    <div className="w-full flex flex-col items-center space-y-4">
-      {/* Game Status */}
-      <div className="flex items-center space-x-4 text-sm text-gray-400">
-        <div className="flex items-center space-x-2">
-          <div
-            className={`w-2 h-2 rounded-full ${
-              isLoading ? "bg-yellow-500" : "bg-green-500"
-            }`}
-          ></div>
-          <span>{isLoading ? "Loading..." : "Game Ready"}</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <div
-            className={`w-2 h-2 rounded-full ${
-              isAuthenticated ? "bg-green-500" : "bg-red-500"
-            }`}
-          ></div>
-          <span>
-            {isAuthenticated ? "Wallet Connected" : "Wallet Disconnected"}
-          </span>
-        </div>
-      </div>
-
-      {/* Game Container */}
-      <div
-        ref={containerRef}
-        className="border-2 border-gray-700 rounded-lg bg-black shadow-2xl"
-        style={{
-          width: "1200px",
-          height: "600px",
-          maxWidth: "100%",
-          maxHeight: "80vh",
-        }}
-      />
-    </div>
+    <GameCabinet
+      containerRef={containerRef}
+      isLoading={isLoading}
+      isConnected={isAuthenticated}
+      address={walletAddress}
+      hud={hud}
+      controls={controls}
+      tradingSlot={tradingSlot}
+      wickBalance={playerStats?.totalTokens ?? null}
+    />
   );
 }
 
@@ -136,6 +120,10 @@ declare global {
       practiceMode: boolean;
       /** Present only when the player is trading. Absent in practice mode. */
       trading?: import("@/lib/tradingBridge").TradingBridge;
+      /** Published by GameScene.js on every change - see publishHud(). */
+      hud?: import("@/hooks/useGameHud").GameHud;
+      /** Registered by GameScene.js once it has booted. */
+      controls?: import("@/hooks/useGameHud").GameControls;
     };
   }
 }

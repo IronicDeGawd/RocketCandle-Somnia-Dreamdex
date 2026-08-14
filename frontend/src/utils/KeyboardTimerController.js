@@ -20,10 +20,6 @@ export class KeyboardTimerController {
     this.timerStartTime = 0;
     this.hasInteracted = false;
 
-    // UI Elements
-    this.timerText = null;
-    this.timerContainer = null;
-
     // Callbacks
     this.onAngleChange = config.onAngleChange || (() => {});
     this.onPowerChange = config.onPowerChange || (() => {});
@@ -31,7 +27,6 @@ export class KeyboardTimerController {
 
     // Initialize
     this.setupKeyboardControls();
-    this.createTimerUI();
 
     //console.log("✅ KeyboardTimerController initialized");
   }
@@ -192,11 +187,6 @@ export class KeyboardTimerController {
     this.timerStartTime = this.scene.time.now;
     this.hasInteracted = true;
 
-    // Show timer UI
-    if (this.timerContainer) {
-      this.timerContainer.setVisible(true);
-    }
-
     //console.log( `⏱️ Launch timer started: ${this.timerDuration / 1000}s countdown`);
   }
 
@@ -207,28 +197,30 @@ export class KeyboardTimerController {
     this.isTimerActive = false;
     this.hasInteracted = false;
 
-    // Hide timer UI
-    if (this.timerContainer) {
-      this.timerContainer.setVisible(false);
-    }
-
     console.log("⏹️ Launch timer stopped");
   }
 
   /**
-   * Update timer display and handle auto-launch
+   * Seconds left before auto-launch fires, for the HUD countdown.
+   *
+   * @returns {number|null} null when no countdown is running
+   */
+  getRemainingSeconds() {
+    if (!this.isTimerActive || !this.hasInteracted) return null;
+
+    const elapsed = this.scene.time.now - this.timerStartTime;
+    const remaining = Math.max(0, this.timerDuration - elapsed);
+    return Math.ceil(remaining / 1000);
+  }
+
+  /**
+   * Update timer state and handle auto-launch
    */
   updateTimer(time) {
     if (!this.isTimerActive || !this.hasInteracted) return;
 
     const elapsed = time - this.timerStartTime;
     const remaining = Math.max(0, this.timerDuration - elapsed);
-
-    // Update timer text (removed timer bar logic)
-    if (this.timerText) {
-      const secondsRemaining = Math.ceil(remaining / 1000);
-      this.timerText.setText(`Auto-launch in: ${secondsRemaining}s`);
-    }
 
     // Auto-launch when timer expires
     if (remaining <= 0 && this.scene.canLaunch) {
@@ -250,46 +242,6 @@ export class KeyboardTimerController {
   }
 
   /**
-   * Create timer UI elements
-   */
-  createTimerUI() {
-    // Create container for timer UI (moved to avoid overlap)
-    this.timerContainer = this.scene.add.container(600, 100);
-
-    // Timer text (only numeric countdown, no bar)
-    this.timerText = this.scene.add
-      .text(0, 0, "Auto-launch in: 8s", {
-        fontSize: "18px",
-        fill: "#ffffff",
-        fontFamily: "Arial",
-        align: "center",
-        stroke: "#000000",
-        strokeThickness: 2,
-      })
-      .setOrigin(0.5);
-
-    // Instruction text (positioned below timer text)
-    const instructionText = this.scene.add
-      .text(0, 25, "W/S: Power | A: Right | D: Left | SPACE: Launch", {
-        fontSize: "14px",
-        fill: "#aaaaaa",
-        fontFamily: "Arial",
-        align: "center",
-        stroke: "#000000", // Add black outline for better visibility
-        strokeThickness: 1,
-      })
-      .setOrigin(0.5);
-
-    // Add to container (removed timer bar)
-    this.timerContainer.add([this.timerText, instructionText]);
-
-    // Initially hidden
-    this.timerContainer.setVisible(false);
-
-    //console.log("⏱️ Timer UI created (text only, no bar)");
-  }
-
-  /**
    * Reset the controller state
    */
   reset() {
@@ -307,11 +259,6 @@ export class KeyboardTimerController {
       this.scene.update = this.originalUpdate;
     } else {
       delete this.scene.update;
-    }
-
-    // Clean up UI
-    if (this.timerContainer) {
-      this.timerContainer.destroy();
     }
 
     // Clean up keyboard input
