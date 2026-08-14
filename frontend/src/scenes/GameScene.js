@@ -1674,7 +1674,9 @@ export class GameScene extends Phaser.Scene {
     // it as a sideways push. Signalled on the HUD before the shot is taken -
     // an unseen force acting on your aim reads as the game cheating.
     rocket.setAccelerationX(this.marketWindAcceleration());
-    rocket.setRotation(angleRad + Math.PI / 2); // Rotate rocket to match trajectory (+ π/2 for proper orientation)
+    // No quarter-turn correction: the art points right and atan2 measures from
+    // the positive x axis, so the velocity angle is the rotation.
+    rocket.setRotation(angleRad);
     rocket.setBounce(0.1); // Reduced bounce for more realistic physics
     // Note: No setDrag() here - air resistance is handled in updateRocketPhysics()
     rocket.setScale(1.0); // Use actual rocket image size (50px)
@@ -1838,24 +1840,51 @@ export class GameScene extends Phaser.Scene {
   renderTrajectoryLine(points) {
     if (points.length < 2) return;
 
-    // Five dots, not a dotted line. A dot every 50ms drew about seventy of
-    // them, which reads as a solid stroke and hides where the arc actually
-    // goes; five evenly spaced marks show the shape and leave the field
-    // readable. They fade with distance so the near end is unambiguous.
-    const FADES = [1, 0.78, 0.56, 0.36, 0.2];
-    const SIZE = 10;
+    // A dotted arc, spaced by distance rather than by time.
+    //
+    // Sampling every simulation step bunches marks up where the shot is slow
+    // and spreads them where it is fast, so the guide is densest exactly where
+    // it says least. Stepping a fixed number of pixels along the path gives an
+    // even row of marks that reads as one arc.
+    //
+    // The design card showed five dots as a sample of the treatment, not as a
+    // count: five is too sparse to show the curve.
+    const SPACING = 26;
+    const NEAR_SIZE = 9;
+    const FAR_SIZE = 4;
 
-    for (let i = 0; i < FADES.length; i++) {
-      // Spread the samples across the whole path rather than clustering them
-      // at the launcher, where they would all overlap.
-      const index = Math.round((i / (FADES.length - 1)) * (points.length - 1));
-      const point = points[index];
-      this.trajectoryGraphics.fillStyle(RC_YELLOW, FADES[i]);
+    // Total path length, so size and fade can be a fraction of the whole
+    // rather than of an arbitrary point count.
+    let total = 0;
+    for (let i = 1; i < points.length; i++) {
+      total += Phaser.Math.Distance.BetweenPoints(points[i - 1], points[i]);
+    }
+    if (total <= 0) return;
+
+    let walked = 0;
+    let sinceLast = SPACING; // draw one at the launcher end straight away
+
+    for (let i = 1; i < points.length; i++) {
+      const step = Phaser.Math.Distance.BetweenPoints(points[i - 1], points[i]);
+      walked += step;
+      sinceLast += step;
+
+      if (sinceLast < SPACING) continue;
+      sinceLast = 0;
+
+      // Nearest marks are biggest and brightest; the tail thins out so the
+      // eye follows the arc outward instead of reading it as a wall.
+      const t = walked / total;
+      const size = Phaser.Math.Linear(NEAR_SIZE, FAR_SIZE, t);
+      const alpha = Phaser.Math.Linear(0.95, 0.18, t);
+
+      const point = points[i];
+      this.trajectoryGraphics.fillStyle(RC_YELLOW, alpha);
       this.trajectoryGraphics.fillRect(
-        point.x - SIZE / 2,
-        point.y - SIZE / 2,
-        SIZE,
-        SIZE
+        point.x - size / 2,
+        point.y - size / 2,
+        size,
+        size
       );
     }
   }
@@ -2872,7 +2901,7 @@ export class GameScene extends Phaser.Scene {
     // Add π/2 (90 degrees)     because the rocket sprite is created vertically
     // and we want it to point in the direction of travel
     const angle =
-      Math.atan2(rocket.body.velocity.y, rocket.body.velocity.x) + Math.PI / 2;
+      Math.atan2(rocket.body.velocity.y, rocket.body.velocity.x);
     rocket.setRotation(angle);
 
     // Add slight scaling effect based on speed for visual enhancement

@@ -191,6 +191,20 @@ function RightRail({
         </div>
       ) : null}
 
+      {/* The market talking, moved off the play field.
+          It used to float over the canvas, taking room from a 1200x600 frame
+          that has none to spare and sitting on top of the terrain the player is
+          aiming at. Out here it can be read without being in the way. */}
+      {hud.marketTicker ? (
+        <div className="gc-rail-block gc-rail-block--tape">
+          <span className="gc-rail-block-label rc-pixel">LIVE TAPE</span>
+          <p className="gc-tape rc-mono">
+            <span className="gc-tape-dot rc-blink" aria-hidden="true" />
+            {hud.marketTicker}
+          </p>
+        </div>
+      ) : null}
+
       {tradingSlot ? (
         <div className="gc-rail-block gc-rail-block--door">{tradingSlot}</div>
       ) : null}
@@ -201,11 +215,13 @@ function RightRail({
           <br />
           WICK {(wickBalance ?? 0).toFixed(2)}
         </p>
+        {/* Only while a run is actually on screen. On the menu there is no run
+            to end, and a live-looking button that does nothing reads as broken. */}
         <button
           type="button"
           className="gc-rail-btn rc-pixel"
           onClick={() => controls?.endGame()}
-          disabled={!controls}
+          disabled={!controls || !hud.active}
         >
           END RUN
         </button>

@@ -51,12 +51,8 @@ export default function GameHud({ hud }: GameHudProps) {
             </>
           ) : null}
         </div>
-        {hud.marketTicker ? (
-          <div className="gc-hud-ticker rc-mono">
-            <span className="gc-hud-ticker-dot rc-blink" aria-hidden="true" />
-            <span>{hud.marketTicker}</span>
-          </div>
-        ) : null}
+        {/* The ticker lives in the cabinet's right rail, not here. Over the
+            canvas it covered the terrain and ate width the frame cannot spare. */}
       </div>
 
       <div className="gc-hud-enemies">

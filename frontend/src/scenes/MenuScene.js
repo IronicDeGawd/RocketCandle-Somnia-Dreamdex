@@ -26,6 +26,9 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create() {
+    // Vertical positions below are spread across the full 600px frame rather
+    // than crowded into the top two thirds, which left a third of the screen
+    // empty under the instructions.
     // Set background
     this.cameras.main.setBackgroundColor("#2A2D34");
 
@@ -43,7 +46,7 @@ export class MenuScene extends Phaser.Scene {
     });
 
     // Create title
-    this.createHardShadowText(600, 55, "ROCKET CANDLE", {
+    this.createHardShadowText(600, 62, "ROCKET CANDLE", {
       fontFamily: PIXEL_FONT,
       fontSize: "28px",
       color: "#F6F740",
@@ -60,7 +63,7 @@ export class MenuScene extends Phaser.Scene {
     // Create play button
     this.playButton = this.createPixelButton(
       600,
-      392,
+      436,
       260,
       66,
       "PLAY GAME",
@@ -70,7 +73,7 @@ export class MenuScene extends Phaser.Scene {
 
     // Create instructions
     this.add
-      .text(600, 460, "AIM WITH SLIDERS · LAUNCH TO FIRE", {
+      .text(600, 508, "AIM WITH SLIDERS · LAUNCH TO FIRE", {
         fontFamily: PIXEL_FONT,
         fontSize: "10px",
         color: "rgba(255,255,255,0.55)",
@@ -78,7 +81,7 @@ export class MenuScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.add
-      .text(600, 484, "LIMITED ATTEMPTS PER LEVEL", {
+      .text(600, 534, "LIMITED ATTEMPTS PER LEVEL", {
         fontFamily: PIXEL_FONT,
         fontSize: "10px",
         color: "#E94F37",
@@ -222,7 +225,7 @@ export class MenuScene extends Phaser.Scene {
    */
   createMarketPicker() {
     this.add
-      .text(600, 140, "CHOOSE YOUR MARKET", {
+      .text(600, 162, "CHOOSE YOUR MARKET", {
         fontFamily: PIXEL_FONT,
         fontSize: "12px",
         color: "#3F88C5",
@@ -238,7 +241,7 @@ export class MenuScene extends Phaser.Scene {
     const columns = 2;
     const gridWidth = columns * chipWidth + (columns - 1) * gapX;
     const startX = 600 - gridWidth / 2 + chipWidth / 2;
-    const rowY = [180, 180 + chipHeight + gapY];
+    const rowY = [206, 206 + chipHeight + gapY];
 
     this.marketChips = [];
 
@@ -288,7 +291,7 @@ export class MenuScene extends Phaser.Scene {
     // so it gets its own bordered panel and the mono face, in blue.
     // Clear of the second chip row, which ends at y=280. At 300 the panel
     // started at 273 and sat on top of the Ether and Bitcoin chips.
-    const panelY = 320;
+    const panelY = 350;
     const panelHeight = 54;
 
     this.add.rectangle(
@@ -521,7 +524,7 @@ export class MenuScene extends Phaser.Scene {
    * Display player stats from blockchain asynchronously
    */
   async displayPlayerStats() {
-    const statsY = 96;
+    const statsY = 108;
 
     try {
       if (!window.web3Service || !window.walletManager?.isConnected) {

@@ -185,8 +185,18 @@
   position: relative;
   background: var(--rc-base);
   overflow: hidden;
-  height: 600px;
   min-width: 0;
+  /*
+   * Match the canvas's own 2:1 shape.
+   *
+   * This was a fixed 600px tall against a flexible width of about 976px, so
+   * the shell was 1.6:1 while the game is 2:1 - and Phaser's FIT scaling
+   * letterboxed the difference into dead bands above and below the play field.
+   * Deriving the height from the width removes them without changing how large
+   * the game actually renders.
+   */
+  height: auto;
+  aspect-ratio: 1200 / 600;
 }
 
 .gc-canvas-mount {
@@ -282,26 +292,30 @@
   line-height: 1.5;
 }
 
-.gc-hud-ticker {
-  background: var(--rc-well);
-  border: var(--rc-border-thin);
-  box-shadow: 4px 4px 0 var(--rc-ink);
-  padding: 8px 12px;
-  font-size: 12px;
-  color: var(--rc-blue);
-  display: flex;
+/* The market talking, in the right rail rather than over the play field.
+   Blue, because that is the colour the market speaks in everywhere here. */
+.gc-rail-block--tape {
   gap: 10px;
-  align-items: flex-start;
-  max-width: 420px;
-  line-height: 1.45;
 }
 
-.gc-hud-ticker-dot {
+.gc-tape {
+  margin: 0;
+  position: relative;
+  padding-left: 16px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--rc-blue);
+  /* Long tape lines must wrap inside a 212px rail rather than widen it. */
+  overflow-wrap: anywhere;
+}
+
+.gc-tape-dot {
+  position: absolute;
+  left: 0;
+  top: 5px;
   width: 8px;
   height: 8px;
   background: var(--rc-blue);
-  flex: none;
-  margin-top: 4px;
 }
 
 .gc-hud-autolaunch {

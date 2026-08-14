@@ -130,24 +130,23 @@ export const DesignTextures = {
     paint(scene, "enemy-var3", enemy(2));
     paint(scene, "enemy-var4", enemy(3));
 
-    // The rocket, drawn NOSE UP. The scene turns it to face its own velocity
-    // by adding a quarter turn, which only lands correctly if the art starts
-    // pointing up - drawn pointing right it flies permanently sideways.
+    // The rocket, drawn NOSE RIGHT, exactly as the design draws it: a short
+    // 22x14 red body with a two-step yellow exhaust trailing behind it.
+    //
+    // Right, not up. Sprite rotation is set from the velocity angle, and
+    // atan2 measures from the positive x axis - so art that points right needs
+    // no correction at all. The previous nose-up drawing only worked because
+    // the scene added a quarter turn to compensate, and that quarter turn has
+    // now been removed with it.
     paint(scene, "rocket", (g, w, h) => {
-      // body
-      panel(g, 19, 8, 12, 34, RED, 3);
-      // nose
-      g.fillStyle(INK, 1);
-      g.fillRect(21, 2, 8, 6);
-      g.fillStyle(YELLOW, 1);
-      g.fillRect(22, 3, 6, 4);
-      // Exhaust, in two steps rather than one block: a bright stub against
-      // the body and a wider, dimmer one behind it. Two steps read as thrust
-      // coming out; one block read as a yellow foot.
-      g.fillStyle(YELLOW, 1);
-      g.fillRect(21, 42, 8, 4);
-      g.fillStyle(YELLOW, 0.55);
-      g.fillRect(18, 46, 14, 4);
+      // Exhaust, furthest and dimmest first, so the taper reads as thrust
+      // coming out rather than as a shape attached to the back.
+      g.fillStyle(YELLOW, 0.35);
+      g.fillRect(0, 21, 12, 8);
+      g.fillStyle(YELLOW, 0.6);
+      g.fillRect(12, 20, 16, 10);
+      // Body
+      panel(g, 28, 18, 22, 14, RED, 3);
     });
 
     // The launcher: a red barrel on a white base, as the design draws it.
