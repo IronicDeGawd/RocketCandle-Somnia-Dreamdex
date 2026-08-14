@@ -9,6 +9,10 @@ const PIXEL_FONT = '"Press Start 2P", monospace';
 const MONO_FONT = '"Geist Mono", monospace';
 
 // Palette, matching design-system.css. Canvas cannot read CSS variables.
+/* Where the machine stands. The terrain generator already assumed 160, so
+   naming it keeps the art and the level layout from drifting apart. */
+const LAUNCHER_X = 160;
+
 const RC_INK = 0x14161a;
 const RC_BASE = 0x2a2d34;
 const RC_WELL = 0x1b1e23;
@@ -1375,7 +1379,7 @@ export class GameScene extends Phaser.Scene {
       } = this.createCandlestickBarrier(x, this.groundY, candle, barWidth);
 
       // Calculate distance from launcher to determine if structures should be built
-      const launcherX = 160;
+      const launcherX = LAUNCHER_X;
       const distanceFromLauncher = Math.abs(x - launcherX);
 
       // Build structures with higher probability for distant candlesticks
@@ -1508,7 +1512,7 @@ export class GameScene extends Phaser.Scene {
     const blockHeight = 20;
 
     // Calculate distance from launcher for difficulty scaling
-    const launcherX = 160; // Launcher position
+    const launcherX = LAUNCHER_X; // Launcher position
     const distanceFromLauncher = Math.abs(x - launcherX);
     const maxDistance = 1000; // Maximum expected distance across level
     const distanceFactor = Math.min(distanceFromLauncher / maxDistance, 1);
@@ -1653,33 +1657,45 @@ export class GameScene extends Phaser.Scene {
    * Create rocket launcher system
    */
   createLauncher() {
-    // Create launcher sprite using actual launcher image (positioned on left side)
+    /*
+     * Two pieces, per the design: a chassis that stays put and a barrel that
+     * turns. It used to be one sprite rotated whole, so aiming tipped the
+     * wheels off the ground - and the barrel's angle, which the design calls
+     * the primary aim feedback, was buried in a rotating machine.
+     */
+    const BASE_W = 132;
+    const BASE_H = 92;
+
+    // Where the barrel pivots, measured in the base art: 64 across, 42 up.
+    const PIVOT_X = 64;
+    const PIVOT_Y = BASE_H - 42;
+
+    this.launcherBase = this.add
+      .image(LAUNCHER_X, this.groundY, "launcher-base")
+      .setOrigin(0.5, 1);
+
+    const left = LAUNCHER_X - BASE_W / 2;
+
     this.launcher = this.add
-      .image(160, this.groundY - 25, "launcher") // Use actual launcher sprite
-      .setOrigin(0.5, 0.5) // Pivot at center for proper rotation
-      .setScale(1.2) // Slightly larger launcher
-      .setFlipX(true); // Flip horizontally so launcher mouth faces right
+      .image(left + PIVOT_X, this.groundY - BASE_H + PIVOT_Y, "launcher-barrel")
+      // Pivot at the barrel's own back end, which is what sits on the mount.
+      .setOrigin(0, 1);
 
-    // Set initial rotation based on launch angle
+    // Behind the barrel, so the muzzle reads as coming out of the machine.
+    this.launcherBase.setDepth(4);
+    this.launcher.setDepth(5);
+
     this.updateLauncherRotation();
-
-    // Angle, power, LAUNCH and END GAME are no longer drawn here - they are
-    // HTML on the cabinet bezel, driven through
-    // window.rocketCandleGame.controls (see registerControls()).
-
-    //console.log("✅ Launcher created");
   }
 
   /**
    * Update launcher rotation based on launch angle
    */
   updateLauncherRotation() {
-    // Convert angle to radians and apply rotation
-    // Since the launcher mouth points down, rotate 25 degrees counterclockwise to point righ8
     // (45 - 20 = 25 degrees, adding 20 degrees clockwise from previous position)
-    const baseRotation = -Math.PI / 8; // -25 degrees (45 - 20 = 25)
-    const angleRad = Phaser.Math.DegToRad(-this.launchAngle) + baseRotation;
-    this.launcher.setRotation(angleRad);
+    // The art points along positive x, so the aim angle is the rotation with
+    // no correction: no sprite-orientation offset to keep in step any more.
+    this.launcher.setRotation(Phaser.Math.DegToRad(-this.launchAngle));
   }
 
   /**
@@ -1718,8 +1734,10 @@ export class GameScene extends Phaser.Scene {
 
     // Create rocket sprite at launcher position
     const rocket = this.rockets.create(
-      this.launcher.x + Math.cos(angleRad) * 30, // Offset from launcher
-      this.launcher.y - Math.sin(angleRad) * 30,
+      // Out of the muzzle, not out of the pivot: the barrel is 58 long, and
+      // spawning at 30 put the rocket inside the machine that fired it.
+      this.launcher.x + Math.cos(angleRad) * 58,
+      this.launcher.y - Math.sin(angleRad) * 58,
       "rocket"
     );
 

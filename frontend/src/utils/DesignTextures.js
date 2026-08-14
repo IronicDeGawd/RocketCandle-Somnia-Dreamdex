@@ -38,7 +38,10 @@ const SIZES = {
   "enemy-var3": [50, 50],
   "enemy-var4": [50, 50],
   rocket: [50, 50],
-  launcher: [50, 50],
+  // The launcher is two pieces, not one: the chassis stands still and only
+  // the barrel turns. Drawn at the design's own measurements.
+  "launcher-base": [132, 92],
+  "launcher-barrel": [58, 26],
 };
 
 /**
@@ -150,9 +153,36 @@ export const DesignTextures = {
     });
 
     // The launcher: a red barrel on a white base, as the design draws it.
-    paint(scene, "launcher", (g, w, h) => {
-      panel(g, 3, 32, w - 6, 15, WHITE, 3);
-      panel(g, 8, 14, 30, 14, RED, 3);
+    /*
+     * The launcher, to C-03: white chassis and three wheels on an ink track,
+     * with a red barrel that pivots on the white mount block.
+     *
+     * It was a white bar and a red bar in a 50x50 square, rotated as one
+     * piece - so the whole machine tipped over every time the player aimed,
+     * wheels and all. Splitting it in two is what lets the barrel be the aim
+     * feedback the design asks for while the cart stays on the ground.
+     *
+     * Design coordinates are measured from the bottom; these are converted
+     * once here rather than scattered through the drawing.
+     */
+    paint(scene, "launcher-base", (g, w, h) => {
+      const up = (bottom, height) => h - bottom - height;
+
+      // Track first, wheels over it - the design stacks them in that order.
+      g.fillStyle(INK, 1);
+      g.fillRect(26, up(8, 12), 80, 12);
+
+      for (const x of [22, 52, 82]) panel(g, x, up(0, 22), 22, 22, WHITE, 4);
+
+      panel(g, 30, up(20, 18), 70, 18, WHITE, 4);
+      panel(g, 54, up(34, 22), 22, 22, WHITE, 4);
+    });
+
+    // Barrel and muzzle share a centre line, so the taller muzzle overhangs
+    // the barrel equally above and below.
+    paint(scene, "launcher-barrel", (g) => {
+      panel(g, 0, 3, 46, 20, RED, 4);
+      panel(g, 46, 0, 12, 26, RED, 4);
     });
   },
 };
