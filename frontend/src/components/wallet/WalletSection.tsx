@@ -5,69 +5,73 @@ import { useApp } from "@/app/providers";
 interface WalletSectionProps {
   onDashboard?: () => void;
   onStartGame?: () => void;
-  onHowToPlay?: () => void;
 }
 
-const WalletSection = ({
-  onDashboard,
-  onStartGame,
-  onHowToPlay,
-}: WalletSectionProps) => {
-  const { connectWallet, isLoading, isAuthenticated, user, playerStats } =
+const WalletSection = ({ onStartGame }: WalletSectionProps) => {
+  const { connectWallet, isLoading, isAuthenticated, user, connectError } =
     useApp();
 
-  if (!isAuthenticated) {
+  // A refusal is worth saying out loud, but only once the attempt has settled -
+  // showing it while a retry is still in flight would contradict the button.
+  const refused = Boolean(connectError) && !isLoading;
+
+  if (isAuthenticated) {
     return (
-      <div className="wallet-section mt-8">
-        <div className="text-center">
-          <h2 className="text-3xl font-bold mb-6">Ready to Play?</h2>
+      <div className="lp-cta">
+        <h2 className="lp-sr-only">Wallet connected</h2>
+        <div className="lp-cta-row">
           <button
-            onClick={connectWallet}
-            disabled={isLoading}
-            className="btn btn-success btn-large"
+            onClick={onStartGame}
+            className="rc-btn rc-btn--danger"
           >
-            {isLoading ? (
-              <span className="flex items-center gap-2">
-                <div className="loading-spinner-small"></div>
-                Connecting...
-              </span>
-            ) : (
-              "🔗 Connect Wallet"
-            )}
+            PLAY
           </button>
-          <p className="text-gray-400 text-base">
-            Connect your wallet to start earning WICK tokens
-          </p>
+          <a href="/practice" className="rc-btn">
+            PRACTICE RUN
+          </a>
         </div>
+        <div className="lp-cta-note rc-mono">{user?.displayName}</div>
       </div>
     );
   }
 
   return (
-    <div className="wallet-section mt-8">
-      <div className="text-center">
-        <div className="auth-text mb-6">
-          <div className="auth-title text-2xl font-bold mb-2">
-            ✅ Wallet Connected
-          </div>
-          <div className="auth-subtitle text-lg text-gray-400">
-            {user?.displayName}
-          </div>
-        </div>
-
-        <div className="flex flex-row gap-4">
+    <div className="lp-cta">
+      <h2 className="lp-sr-only">Play Rocket Candle</h2>
+      <div className="lp-cta-row">
+        {/* Practice keeps its slot whatever happens to the wallet. The free
+            route is never blocked by the paid one failing. */}
+        <a href="/practice" className="rc-btn rc-btn--danger">
+          PRACTICE RUN
+        </a>
+        {/* On a refusal the retry moves down into the message line, so there is
+            one way to try again rather than two competing ones. */}
+        {!refused && (
           <button
-            onClick={onStartGame}
-            className="btn btn-success btn-large play-button"
+            onClick={connectWallet}
+            disabled={isLoading}
+            className="rc-btn"
           >
-            🎮 Start Game
+            {isLoading ? (
+              <span className="lp-connecting rc-blink">CONNECTING</span>
+            ) : (
+              "CONNECT WALLET"
+            )}
           </button>
-
-          <button onClick={onHowToPlay} className="btn btn-glass btn-large">
-            📖 How to Play
+        )}
+      </div>
+      {refused ? (
+        <div className="lp-cta-note lp-cta-note--failed rc-mono" role="alert">
+          Wallet did not connect.{" "}
+          <button onClick={connectWallet} className="lp-cta-retry rc-mono">
+            TRY AGAIN
           </button>
         </div>
-      </div>
+      ) : (
+        <div className="lp-cta-note rc-mono">
+          Practice records nothing. Connecting adds scores and stakes.
+        </div>
+      )}
     </div>
   );
 };
