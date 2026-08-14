@@ -161,6 +161,15 @@ declare global {
        * added together. Kept here so the navbar can show it from any page.
        */
       tradedVolume?: number;
+      /**
+       * Is the menu the scene on screen?
+       *
+       * The trading panel only takes over the frame there. Anywhere else -
+       * mid-run, or on the results - it belongs in the rail.
+       */
+      atMenu?: boolean;
+      /** The exits chosen on the menu, which GameScene enforces. */
+      exitPlan?: import("@/hooks/useGameHud").ExitPlan;
     };
   }
 }

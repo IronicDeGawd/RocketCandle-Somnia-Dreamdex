@@ -234,20 +234,29 @@
    exactly where the mock places it; nothing here intercepts pointer events,
    so the game underneath stays fully interactive. */
 
-.gc-hud {
-  position: absolute;
-  inset: 0;
-  z-index: 6;
-  pointer-events: none;
+/* The readouts, in a bar across the top of the cabinet. They were positioned
+   over the canvas, which cost the play field its four corners on the smallest
+   frame on the page; here they take the cabinet's width instead. */
+
+.gc-topbar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 18px;
+  background: var(--rc-well);
+  border: var(--rc-border);
+  box-shadow: var(--rc-shadow-mid);
 }
 
-.gc-hud-score {
-  position: absolute;
-  left: 22px;
-  top: 18px;
+.gc-topbar-block {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.gc-topbar-block--end {
+  margin-left: auto;
 }
 
 .gc-hud-label {
@@ -256,43 +265,45 @@
 }
 
 .gc-hud-score-value {
-  font-size: 34px;
+  font-size: 26px;
   color: var(--rc-yellow);
-  text-shadow: 4px 4px 0 var(--rc-ink);
-}
-
-.gc-hud-enemies {
-  position: absolute;
-  right: 22px;
-  top: 18px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
+  text-shadow: 3px 3px 0 var(--rc-ink);
 }
 
 .gc-hud-enemies-value {
-  font-size: 34px;
+  font-size: 26px;
   color: var(--rc-red);
-  text-shadow: 4px 4px 0 var(--rc-ink);
+  text-shadow: 3px 3px 0 var(--rc-ink);
 }
 
-.gc-hud-center {
-  position: absolute;
-  left: 230px;
-  right: 230px;
-  top: 18px;
+.gc-topbar-center {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
 }
 
 .gc-hud-level {
+  font-size: 11px;
+  color: var(--rc-white);
+}
+
+/* The level's name can be long, and truncating it beats wrapping the bar
+   onto a second line and shoving the frame down the page. */
+.gc-topbar-levelname {
+  font-size: 12px;
+  color: var(--rc-blue);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gc-topbar-autolaunch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-size: 10px;
   color: var(--rc-white);
-  text-align: center;
-  line-height: 1.5;
 }
 
 /* The market talking, in the right rail rather than over the play field.
@@ -321,19 +332,6 @@
   background: var(--rc-blue);
 }
 
-.gc-hud-autolaunch {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 170px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  font-size: 11px;
-  color: var(--rc-white);
-}
-
 .gc-hud-autolaunch-track {
   width: 240px;
   height: 14px;
@@ -346,50 +344,8 @@
   background: var(--rc-yellow);
 }
 
-.gc-hud-position {
-  position: absolute;
-  right: 22px;
-  bottom: 48px;
-  background: var(--rc-well);
-  border: var(--rc-border);
-  box-shadow: var(--rc-shadow-mid);
-  min-width: 250px;
-  pointer-events: auto;
-}
-
-.gc-hud-position-head {
-  background: var(--rc-yellow);
-  color: var(--rc-ink);
-  font-size: 9px;
-  padding: 8px 10px;
-}
-
-.gc-hud-position-body {
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 12px;
-}
-
-.gc-hud-row {
-  display: flex;
-  justify-content: space-between;
-}
-
-.gc-hud-row-label { color: var(--rc-text-faint); }
-
 .gc-gain { color: var(--rc-yellow); }
 .gc-loss { color: var(--rc-red); }
-
-.gc-hud-keys {
-  border-top: var(--rc-border-thin);
-  padding-top: 8px;
-  display: flex;
-  gap: 10px;
-  font-size: 8px;
-  color: rgba(255, 255, 255, 0.55);
-}
 
 .gc-key-red { color: var(--rc-red); }
 
@@ -667,7 +623,6 @@
     aspect-ratio: 1200 / 600;
   }
 
-  .gc-hud-center { left: 16px; right: 16px; }
 }
 
 @media (max-width: 640px) {
@@ -675,12 +630,10 @@
   .gc-page { padding: 92px 14px 56px; gap: 16px; }
   .gc-statusbar { padding: 0 12px; }
   .gc-statusbar-left { gap: 12px; }
-  .gc-hud-score, .gc-hud-enemies { top: 10px; }
-  .gc-hud-score-value, .gc-hud-enemies-value { font-size: 22px; }
-  .gc-hud-center { top: 10px; }
-  .gc-hud-autolaunch { top: 90px; }
-  .gc-hud-autolaunch-track { width: 160px; }
-  .gc-hud-position { right: 10px; bottom: 10px; min-width: 200px; }
+  .gc-hud-score-value, .gc-hud-enemies-value { font-size: 20px; }
+  .gc-topbar { gap: 12px; padding: 10px 12px; }
+  .gc-topbar-levelname { display: none; }
+  .gc-hud-autolaunch-track { width: 120px; }
   .gc-bezel { gap: 16px; padding: 14px; }
   .gc-launch-btn { padding: 16px 24px; font-size: 12px; }
 }

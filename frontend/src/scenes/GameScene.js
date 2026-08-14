@@ -149,6 +149,19 @@ export class GameScene extends Phaser.Scene {
     this.ejecting = false;
     this.buyingFirepower = false;
     this.stopTriggered = false;
+    this.targetTriggered = false;
+
+    /*
+     * The exits the player chose on the menu, for the pair they picked. The
+     * floor used to be a constant nobody could change and there was no target
+     * at all, so the only way out of a position was the E key.
+     */
+    const plan =
+      typeof window !== "undefined"
+        ? window.rocketCandleGame?.exitPlan
+        : null;
+    this.stopLossPct = plan?.floorPct ?? this.stopLossPct;
+    this.takeProfitPct = plan?.targetPct ?? 0;
     if (this.positionTimer) {
       this.positionTimer.remove();
       this.positionTimer = null;
@@ -570,6 +583,45 @@ export class GameScene extends Phaser.Scene {
     this.updatePositionText();
     this.updateFeeCounter();
     this.checkStopLoss();
+    this.checkTarget();
+  }
+
+  /**
+   * Sell automatically if the position rises far enough.
+   *
+   * The mirror of the floor, and deliberately the same shape: watched by this
+   * page while the run is on screen, and it does NOT end the run. The rocket
+   * drops back to base strength and the game carries on, because taking a
+   * profit and finishing a game are different decisions.
+   */
+  async checkTarget() {
+    if (!this.position?.open || this.targetTriggered || this.ejecting) return;
+    if (!this.takeProfitPct) return;
+    if (this.position.pnlPct < this.takeProfitPct) return;
+
+    const bridge = this.getTradingBridge();
+    if (!bridge) return;
+
+    this.targetTriggered = true;
+    this.showEjectNotice(
+      `Target hit at +${this.takeProfitPct}% - selling your position`
+    );
+
+    try {
+      const result = await bridge.close();
+      this.position = await bridge.snapshot();
+      this.updatePositionText();
+      this.updateFeeCounter();
+
+      if (result) {
+        this.showEjectNotice(
+          `Took profit - ${result.proceeds.toFixed(4)} USDso back. Play on.`
+        );
+      }
+    } catch {
+      this.targetTriggered = false;
+      this.showEjectNotice("Could not sell at the target - still holding");
+    }
   }
 
   /**
@@ -584,6 +636,9 @@ export class GameScene extends Phaser.Scene {
    */
   async checkStopLoss() {
     if (!this.position?.open || this.stopTriggered || this.ejecting) return;
+
+    // Off means off: a player who set no floor rides it out.
+    if (!this.stopLossPct) return;
     if (this.position.pnlPct > -this.stopLossPct) return;
 
     const bridge = this.getTradingBridge();
@@ -749,6 +804,7 @@ export class GameScene extends Phaser.Scene {
       pnl,
       pnlPct,
       floorPct: this.stopLossPct,
+      targetPct: this.takeProfitPct,
     };
     this.publishHud();
   }

@@ -23,6 +23,8 @@ export interface TradingPositionHud {
   pnlPct: number;
   /** How far the position may fall before it sells itself, as a percentage. */
   floorPct: number;
+  /** Sell if the position rises this far. Zero means the player set none. */
+  targetPct: number;
 }
 
 /** The price line a run was cut from, with the current level marked on it. */
@@ -173,6 +175,44 @@ export function useSelectedMarket(): SelectedMarket | null {
     subscribe,
     getMarketSnapshot,
     getMarketServerSnapshot
+  );
+}
+
+/** The floor and target the player chose on the menu, before the run. */
+export interface ExitPlan {
+  floorPct: number;
+  targetPct: number;
+}
+
+const NO_EXITS: ExitPlan = { floorPct: 0, targetPct: 0 };
+
+export function useExitPlan(): ExitPlan {
+  return useSyncExternalStore(
+    subscribe,
+    () =>
+      typeof window === "undefined"
+        ? NO_EXITS
+        : window.rocketCandleGame?.exitPlan ?? NO_EXITS,
+    () => NO_EXITS
+  );
+}
+
+/**
+ * Is the menu the scene on screen?
+ *
+ * The trading panel is the way into a run, so it takes over the frame there -
+ * but only there. Mid-run and on the results screen it belongs in the rail,
+ * and without this it reappeared over the results the instant the run's
+ * position sold itself.
+ */
+export function useAtMenu(): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    () =>
+      typeof window === "undefined"
+        ? false
+        : Boolean(window.rocketCandleGame?.atMenu),
+    () => false
   );
 }
 

@@ -78,13 +78,16 @@ export default function GameCabinet({
         </div>
       </div>
 
+      {/* Above the frame, not over it: the canvas is the smallest thing on
+          the page and these readouts were spending four corners of it. */}
+      <GameHud hud={hud} />
+
       <div className="gc-body">
         <LevelRail hud={hud} />
 
         <div className="gc-canvas-shell">
           <div ref={containerRef} className="gc-canvas-mount" />
           <div className="gc-scanlines" aria-hidden="true" />
-          <GameHud hud={hud} />
         </div>
 
         <RightRail hud={hud} controls={controls} tradingSlot={tradingSlot} wickBalance={wickBalance} />

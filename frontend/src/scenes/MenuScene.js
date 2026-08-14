@@ -19,6 +19,14 @@ const SHADOW_OFFSET = 5;
 /** Below this a buy is not worth making, and the exchange may refuse it. */
 const MIN_STAKE = 0.5;
 
+/*
+ * What the two exits may be set to. Zero means off - a player who wants to
+ * ride it out should be able to say so, rather than being given a floor they
+ * did not ask for.
+ */
+const FLOOR_CHOICES = [0, 5, 10, 20];
+const TARGET_CHOICES = [0, 5, 10, 20];
+
 /**
  * MenuScene - Main menu with play button and last game score
  * Handles score persistence via localStorage
@@ -66,9 +74,9 @@ export class MenuScene extends Phaser.Scene {
     // Create play button
     this.playButton = this.createPixelButton(
       600,
-      466,
+      480,
       420,
-      82,
+      70,
       "PLAY GAME",
       { fill: YELLOW, textColor: "#14161A", fontSize: "22px" },
       () => this.startGame()
@@ -76,7 +84,7 @@ export class MenuScene extends Phaser.Scene {
 
     // Create instructions
     this.add
-      .text(600, 538, "AIM WITH SLIDERS · LAUNCH TO FIRE", {
+      .text(600, 542, "AIM WITH SLIDERS · LAUNCH TO FIRE", {
         fontFamily: PIXEL_FONT,
         fontSize: "12px",
         color: "rgba(255,255,255,0.55)",
@@ -84,7 +92,7 @@ export class MenuScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.add
-      .text(600, 566, "LIMITED ATTEMPTS PER LEVEL", {
+      .text(600, 568, "LIMITED ATTEMPTS PER LEVEL", {
         fontFamily: PIXEL_FONT,
         fontSize: "12px",
         color: "#E94F37",
@@ -115,6 +123,18 @@ export class MenuScene extends Phaser.Scene {
     if (typeof window === "undefined") return;
 
     this.publishSelectedMarket();
+
+    /*
+     * Say when the menu is the thing on screen.
+     *
+     * The trading panel takes over the frame whenever no position is open,
+     * which was true the instant a run's position sold itself - so it landed
+     * on top of the results the moment the game ended. It is only the way in
+     * while the player is standing at the menu.
+     */
+    this.setAtMenu(true);
+    this.events.once("shutdown", () => this.setAtMenu(false));
+    this.events.once("destroy", () => this.setAtMenu(false));
 
     const onChange = () => this.refreshPlayButton();
     window.addEventListener("rc-hud", onChange);
@@ -244,7 +264,7 @@ export class MenuScene extends Phaser.Scene {
     const columns = 2;
     const gridWidth = columns * chipWidth + (columns - 1) * gapX;
     const startX = 600 - gridWidth / 2 + chipWidth / 2;
-    const rowY = [200, 200 + chipHeight + gapY];
+    const rowY = [198, 198 + chipHeight + gapY];
 
     this.marketChips = [];
 
@@ -294,8 +314,12 @@ export class MenuScene extends Phaser.Scene {
     // so it gets its own bordered panel and the mono face, in blue.
     // Clear of the second chip row, which ends at y=280. At 300 the panel
     // started at 273 and sat on top of the Ether and Bitcoin chips.
-    const panelY = 372;
-    const panelHeight = 60;
+    // The exits row sits between the chips and the provenance line, so the
+    // player sets their floor and target on the pair they have just chosen.
+    this.createExitPicker(358, gridWidth);
+
+    const panelY = 414;
+    const panelHeight = 48;
 
     this.add.rectangle(
       600 + SHADOW_OFFSET,
@@ -563,6 +587,99 @@ export class MenuScene extends Phaser.Scene {
       this.buyingIn = false;
       this.refreshPlayButton();
     }
+  }
+
+  /**
+   * Where the player sets the two prices that end the trade for them.
+   *
+   * The floor sells if the position falls that far; the target sells if it
+   * rises that far. Both are watched by the page while the run is on screen,
+   * which costs nothing and covers both directions - the exchange itself has
+   * no sell-on-rise order to rest here even if we wanted one.
+   *
+   * Neither ends the run. Selling and playing are different decisions, and
+   * keeping them apart is what teaches a first-timer what holding actually
+   * means: the rocket simply drops back to base strength.
+   */
+  createExitPicker(y, gridWidth) {
+    const half = gridWidth / 2 - 10;
+    const leftX = 600 - gridWidth / 2 + half / 2;
+    const rightX = 600 + gridWidth / 2 - half / 2;
+
+    this.exitPlan = {
+      floorPct: this.registry.get("floorPct") ?? FLOOR_CHOICES[1],
+      targetPct: this.registry.get("targetPct") ?? TARGET_CHOICES[2],
+    };
+
+    this.floorButton = this.createPixelButton(
+      leftX,
+      y,
+      half,
+      44,
+      "",
+      { fill: WELL, textColor: "#FFFFFF", fontSize: "12px" },
+      () => this.cycleExit("floorPct", FLOOR_CHOICES)
+    );
+
+    this.targetButton = this.createPixelButton(
+      rightX,
+      y,
+      half,
+      44,
+      "",
+      { fill: WELL, textColor: "#FFFFFF", fontSize: "12px" },
+      () => this.cycleExit("targetPct", TARGET_CHOICES)
+    );
+
+    this.publishExitPlan();
+  }
+
+  /** Step one of the two exits to its next value and republish. */
+  cycleExit(key, choices) {
+    const current = this.exitPlan[key];
+    const index = choices.indexOf(current);
+    this.exitPlan[key] = choices[(index + 1) % choices.length];
+    this.registry.set(key, this.exitPlan[key]);
+    this.publishExitPlan();
+  }
+
+  /**
+   * Hand the plan to the scene that will enforce it.
+   *
+   * On the window rather than the registry alone, because the panel in the
+   * page shows the same two numbers and cannot see Phaser's registry.
+   */
+  publishExitPlan() {
+    const { floorPct, targetPct } = this.exitPlan;
+
+    if (this.floorButton) {
+      this.floorButton.text.setText(
+        floorPct ? `FLOOR -${floorPct}%` : "FLOOR OFF"
+      );
+    }
+    if (this.targetButton) {
+      this.targetButton.text.setText(
+        targetPct ? `TARGET +${targetPct}%` : "TARGET OFF"
+      );
+    }
+
+    if (typeof window !== "undefined" && window.rocketCandleGame) {
+      window.rocketCandleGame.exitPlan = { floorPct, targetPct };
+      window.dispatchEvent(new CustomEvent("rc-hud"));
+    }
+  }
+
+  /**
+   * Say when the menu is the thing on screen.
+   *
+   * The trading panel takes over the frame whenever no position is open, and
+   * that became true the instant a run's position sold itself - so the panel
+   * landed on top of the results the moment the game ended.
+   */
+  setAtMenu(value) {
+    if (typeof window === "undefined" || !window.rocketCandleGame) return;
+    window.rocketCandleGame.atMenu = value;
+    window.dispatchEvent(new CustomEvent("rc-hud"));
   }
 
   /** Say something on the status line, then let it fall back. */

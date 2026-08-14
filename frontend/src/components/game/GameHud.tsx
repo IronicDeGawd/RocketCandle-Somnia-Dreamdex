@@ -3,15 +3,21 @@
 import type { GameHud as GameHudState } from "@/hooks/useGameHud";
 
 /**
- * The readouts that used to be drawn inside the Phaser canvas - score,
- * level, the market ticker, enemy count, the auto-launch countdown, and the
- * open position - now sitting in HTML over the frame instead. Nothing here
- * computes anything: every value comes straight from the HUD bridge that
- * GameScene.js publishes.
+ * Score, level and enemies - above the play field rather than on top of it.
+ *
+ * These readouts were drawn in the canvas, then lifted into HTML but still
+ * positioned over it, which changed nothing about the real cost: the frame is
+ * the smallest thing on the page and four corners of it were spent on chrome.
+ * They now sit in a bar above the frame, where they take the cabinet's width
+ * instead of the game's.
+ *
+ * The open-position block that used to live here is gone. The right rail
+ * already carries stake, profit and floor, and printing the same three numbers
+ * twice on one screen only invites them to disagree.
  *
  * The auto-launch countdown starts at 8 seconds - GameScene's own
- * `timerDuration` - which is why the progress fill below is measured
- * against 8 rather than a value read from the bridge.
+ * `timerDuration` - which is why the bar below is measured against 8 rather
+ * than a value read from the bridge.
  */
 const AUTO_LAUNCH_SECONDS = 8;
 
@@ -20,9 +26,8 @@ export interface GameHudProps {
 }
 
 export default function GameHud({ hud }: GameHudProps) {
-  // Nothing to overlay until a run is actually on screen. Otherwise the
-  // loading and menu scenes get a score of zero and an empty enemy count
-  // sitting on top of them.
+  // Nothing to show until a run is actually on screen, or the loading and
+  // menu scenes get a score of zero and an empty enemy count above them.
   if (!hud.active) return null;
 
   const autoLaunchPct =
@@ -34,37 +39,27 @@ export default function GameHud({ hud }: GameHudProps) {
         );
 
   return (
-    <div className="gc-hud">
-      <div className="gc-hud-score">
+    <div className="gc-topbar">
+      <div className="gc-topbar-block">
         <span className="gc-hud-label rc-pixel">SCORE</span>
         <span className="gc-hud-score-value rc-pixel">{hud.score}</span>
         <span className="gc-hud-label rc-pixel">{hud.totalAttempts} SHOTS</span>
       </div>
 
-      <div className="gc-hud-center">
-        <div className="gc-hud-level rc-pixel">
+      <div className="gc-topbar-center">
+        <span className="gc-hud-level rc-pixel">
           LEVEL {hud.level} / {hud.totalLevels}
-          {hud.levelName ? (
-            <>
-              <br />
-              {hud.levelName.toUpperCase()}
-            </>
-          ) : null}
-        </div>
-        {/* The ticker lives in the cabinet's right rail, not here. Over the
-            canvas it covered the terrain and ate width the frame cannot spare. */}
-      </div>
-
-      <div className="gc-hud-enemies">
-        <span className="gc-hud-label rc-pixel">ENEMIES</span>
-        <span className="gc-hud-enemies-value rc-pixel">
-          {String(hud.enemiesLeft).padStart(2, "0")}
         </span>
+        {hud.levelName ? (
+          <span className="gc-topbar-levelname rc-mono">
+            {hud.levelName.toUpperCase()}
+          </span>
+        ) : null}
       </div>
 
       {hud.autoLaunchSeconds !== null ? (
-        <div className="gc-hud-autolaunch">
-          <span className="rc-pixel">AUTO-LAUNCH {hud.autoLaunchSeconds}</span>
+        <div className="gc-topbar-autolaunch">
+          <span className="rc-pixel">AUTO {hud.autoLaunchSeconds}</span>
           <div className="gc-hud-autolaunch-track">
             <div
               className="gc-hud-autolaunch-fill"
@@ -74,41 +69,12 @@ export default function GameHud({ hud }: GameHudProps) {
         </div>
       ) : null}
 
-      {hud.position ? (
-        <div className="gc-hud-position">
-          <div className="gc-hud-position-head rc-pixel">POSITION OPEN</div>
-          <div className="gc-hud-position-body rc-mono">
-            <div className="gc-hud-row">
-              <span className="gc-hud-row-label">STAKED</span>
-              <span>{hud.position.stake.toFixed(3)}</span>
-            </div>
-            <div className="gc-hud-row">
-              <span className="gc-hud-row-label">NOW</span>
-              <span>
-                {hud.position.value.toFixed(3)}{" "}
-                <span
-                  className={hud.position.pnl >= 0 ? "gc-gain" : "gc-loss"}
-                >
-                  {hud.position.pnl >= 0 ? "+" : ""}
-                  {hud.position.pnlPct.toFixed(2)}%
-                </span>
-              </span>
-            </div>
-            <div className="gc-hud-row">
-              <span className="gc-hud-row-label">FLOOR</span>
-              <span>-{hud.position.floorPct}%</span>
-            </div>
-            <div className="gc-hud-keys rc-pixel">
-              <span>
-                <span className="gc-key-red">E</span> EJECT
-              </span>
-              <span>
-                <span className="gc-key-red">F</span> POWER
-              </span>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <div className="gc-topbar-block gc-topbar-block--end">
+        <span className="gc-hud-label rc-pixel">ENEMIES</span>
+        <span className="gc-hud-enemies-value rc-pixel">
+          {String(hud.enemiesLeft).padStart(2, "0")}
+        </span>
+      </div>
     </div>
   );
 }

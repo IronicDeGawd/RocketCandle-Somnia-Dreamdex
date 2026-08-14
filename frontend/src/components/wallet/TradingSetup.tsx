@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useAtMenu, useExitPlan } from "@/hooks/useGameHud";
 import { useSessionKey } from "@/hooks/useSessionKey";
 import { useTradingSession } from "@/hooks/useTradingSession";
 import "@/app/trading.css";
@@ -15,9 +16,6 @@ import "@/app/trading.css";
  * Gamers first: this panel is a door, not a wall. It starts closed and a
  * player who never opens it never sees a form.
  */
-
-/** Below this a buy is not worth making, and the exchange may refuse it. */
-const MIN_STAKE = 0.5;
 
 const STEP_LABELS: Record<string, string> = {
   "switching-network": "Switching to Somnia...",
@@ -71,6 +69,8 @@ export default function TradingSetup({
     withdrawAll,
   } = useSessionKey(symbol);
   const { bridge, snapshot, refresh } = useTradingSession(symbol);
+  const atMenu = useAtMenu();
+  const exits = useExitPlan();
   // Starts open. This panel used to be a door the player could ignore; it is
   // now the start button, so folding it away would hide the only way into a
   // run behind a control captioned "Open".
@@ -211,35 +211,6 @@ export default function TradingSetup({
   const showSetupProgress = !authorized && setupIndex !== -1;
   const hasOpenStop = Boolean(bridge?.canRestStop && snapshot?.open);
 
-  /*
-   * Once, when the vault is first read: bring an oversized default stake down
-   * to what is actually in there.
-   *
-   * The field defaults to 2, but a player who funded 1 was then shown the
-   * "fund the vault" branch over money already sitting in the vault - being
-   * asked to add more when the sensible move was to spend what was there.
-   */
-  const stakeClamped = useRef(false);
-  useEffect(() => {
-    if (stakeClamped.current || !authorized || vault === null || vault <= 0) {
-      return;
-    }
-    stakeClamped.current = true;
-
-    // Only down to something actually tradeable. Clamping to whatever is in
-    // there turned leftover dust into a stake of 0.0032, and a buy that small
-    // is below the exchange's minimum - an offer that could only ever fail.
-    if (vault < MIN_STAKE) return;
-    setAmount((current) => (Number(current) > vault ? String(vault) : current));
-  }, [authorized, vault]);
-
-  const stakeWanted = Number(amount);
-
-  // Vault read back and genuinely short of the stake. Null means "not read
-  // yet", which must not be mistaken for empty.
-  const underfunded =
-    vault !== null && Number.isFinite(stakeWanted) && vault < stakeWanted;
-
   const enableLabel = busy
     ? STEP_LABELS[step] ?? "Working..."
     : error
@@ -272,7 +243,8 @@ export default function TradingSetup({
    * the controls it exists for are squeezed into a column too narrow to use -
    * the same reason the buy-in was lifted out of the rail in the first place.
    */
-  const asOverlay = overlayUntilOpen && (!positionOpen || expanded);
+  const asOverlay =
+    overlayUntilOpen && atMenu && (!positionOpen || expanded);
 
   useEffect(() => {
     if (snapshot?.open) setOpen(false);
@@ -330,7 +302,13 @@ export default function TradingSetup({
           <div className="ts-strip-row">
             <span className="rc-pixel ts-strip-label">FLOOR</span>
             <span className="rc-mono ts-strip-value">
-              {stopResting ? "armed" : "not armed"}
+              {exits.floorPct ? `-${exits.floorPct}%` : "off"}
+            </span>
+          </div>
+          <div className="ts-strip-row">
+            <span className="rc-pixel ts-strip-label">TARGET</span>
+            <span className="rc-mono ts-strip-value">
+              {exits.targetPct ? `+${exits.targetPct}%` : "off"}
             </span>
           </div>
         </div>
@@ -484,11 +462,10 @@ export default function TradingSetup({
                   /*
                    * Authorised but the key cannot pay for a transaction.
                    *
-                   * The key sends its own orders, so it needs native STT of its
-                   * own. Setup never gave it any, and an address that has never
-                   * paid a fee does not exist as far as the network is
-                   * concerned - so the buy-in failed with "account does not
-                   * exist", which explains nothing to anybody.
+                   * The key sends its own orders, so it needs native STT of
+                   * its own. An address that has never paid a fee does not
+                   * exist as far as the network is concerned, so without this
+                   * the first order fails with "account does not exist".
                    */
                   <div className="ts-stop">
                     <p className="ts-note">
@@ -497,8 +474,8 @@ export default function TradingSetup({
                         {keyGas !== null ? keyGas.toFixed(3) : "…"} STT
                       </span>
                       , which is not enough to pay for its own orders. Top it up
-                      and the buy-in opens up. Anything unspent stays in the
-                      key, and revoking is unaffected.
+                      and PLAY works again. Anything unspent stays in the key,
+                      and revoking is unaffected.
                     </p>
                     <button
                       onClick={fuelKey}
@@ -511,20 +488,36 @@ export default function TradingSetup({
                     </button>
                     {error ? <p className="ts-error">{error}</p> : null}
                   </div>
-                ) : !snapshot?.open && underfunded ? (
+                ) : !snapshot?.open ? (
                   /*
-                   * Authorised but the vault cannot cover the stake.
+                   * A deposit form, nothing more.
                    *
-                   * Reachable whenever the deposit failed while the other three
-                   * setup steps succeeded - and there was no way out of it,
-                   * because funding the vault only happened in a step that is
-                   * hidden once the key is authorised. The buy-in button was
-                   * the only thing on offer and it could not possibly work.
+                   * This used to compare the field against the vault and
+                   * declare the player short whenever the field was larger -
+                   * a rule that made sense only while this panel did the
+                   * buying. PLAY stakes whatever the vault holds, so the
+                   * field means "add this much", and a vault with money in it
+                   * is never short of anything.
                    */
                   <div className="ts-stop">
+                    <p className="ts-ready">
+                      The vault holds{" "}
+                      <span className="rc-mono">
+                        {vault !== null ? vault.toFixed(2) : "…"} USDso
+                      </span>
+                      {vault && vault > 0
+                        ? ", ready to play with."
+                        : ". Add some to play."}
+                    </p>
+                    <p className="ts-note">
+                      Press PLAY on the cabinet to buy into {symbol} and start a
+                      run, staking whatever is in the vault - so your rocket is
+                      as strong as what you put in. It sells back when the run
+                      ends, and <span className="ts-key">E</span> ejects early.
+                    </p>
                     <label className="ts-field">
                       <span className="rc-pixel ts-field-label">
-                        Stake (USDso)
+                        Add to the vault (USDso)
                       </span>
                       <div className="rc-well ts-stake-well">
                         <input
@@ -539,47 +532,16 @@ export default function TradingSetup({
                         <span className="ts-stake-unit">USDso</span>
                       </div>
                     </label>
-                    <p className="ts-note">
-                      The vault holds{" "}
-                      <span className="rc-mono">
-                        {vault !== null ? vault.toFixed(2) : "…"} USDso
-                      </span>
-                      , which is short of this stake. Fund it and the buy-in
-                      opens up.
-                    </p>
                     <button
                       onClick={handleEnable}
-                      disabled={busy}
-                      className="rc-btn rc-btn--primary ts-btn-full"
+                      disabled={busy || !(Number(amount) > 0)}
+                      className="rc-btn ts-btn-full"
                     >
                       {busy
                         ? STEP_LABELS[step] ?? "Working..."
-                        : `Fund the vault with ${amount} USDso`}
+                        : `Add ${amount || "0"} USDso`}
                     </button>
                     {error ? <p className="ts-error">{error}</p> : null}
-                  </div>
-                ) : !snapshot?.open ? (
-                  /*
-                   * Funding only. The purchase itself moved to the PLAY
-                   * button, because buying into a pair IS starting a run -
-                   * as a step of its own it let a player convert their stake
-                   * into tokens and never play, with no way back.
-                   */
-                  <div className="ts-stop">
-                    <p className="ts-ready">
-                      The vault holds{" "}
-                      <span className="rc-mono">
-                        {vault !== null ? vault.toFixed(2) : "…"} USDso
-                      </span>
-                      , ready to play with.
-                    </p>
-                    <p className="ts-note">
-                      Press PLAY on the cabinet to buy into {symbol} and start
-                      a run. Whatever is in the vault is what gets staked, so
-                      your rocket is as strong as what you put in. It sells
-                      back when the run ends, and{" "}
-                      <span className="ts-key">E</span> ejects early.
-                    </p>
                   </div>
                 ) : hasOpenStop ? (
                   <div className="ts-stop">
