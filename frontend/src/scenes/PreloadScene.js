@@ -2,6 +2,17 @@ import { AssetGenerator } from "@/utils/AssetGenerator.js";
 import { MarketDataProvider } from "@/data/MarketDataProvider.js";
 import { DEFAULT_MARKET_ID } from "@/data/DreamdexMarketFeed.js";
 
+// Redesign palette - flat, no gradients, no blur. See context/redesign board,
+// section "scenes" (LOADING / MENU / END OF RUN).
+const INK = 0x14161a;
+const WELL = 0x1b1e23;
+const RED = 0xe94f37;
+const BLUE = 0x3f88c5;
+const WHITE = 0xffffff;
+
+const PIXEL_FONT = '"Press Start 2P", monospace';
+const PROSE_FONT = '"Instrument Sans", sans-serif';
+
 /**
  * PreloadScene - Handles loading of all game assets
  * Generates placeholder sprites and prepares the game for the main scene
@@ -13,9 +24,9 @@ export class PreloadScene extends Phaser.Scene {
 
   preload() {
     // Set theme background
-    this.cameras.main.setBackgroundColor("#1a1a2e");
+    this.cameras.main.setBackgroundColor("#2A2D34");
 
-    // Load Pixelify Sans font
+    // Load Pixelify Sans font - still required by GameScene's HUD text
     this.load.script(
       "webfont",
       "https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js"
@@ -30,99 +41,94 @@ export class PreloadScene extends Phaser.Scene {
       });
     });
 
-    // Create animated background stars
-    this.createStarField();
+    // Decorative ink-bordered blips instead of a star field - flat dots,
+    // no glow, no drift, matching the frame's fixed, non-reflowing layout.
+    this.createBlips();
 
-    // Create main title with glow effect
-    const title = this.add
-      .text(600, 200, "🚀 ROCKET CANDLE", {
-        fontSize: "64px", // Increased from 56px
-        fill: "#ffffff",
-        fontStyle: "bold",
-        fontFamily: "Pixelify Sans, Arial",
-        stroke: "#87ceeb",
-        strokeThickness: 2,
-      })
-      .setOrigin(0.5);
-
-    // Add title glow animation
-    this.tweens.add({
-      targets: title,
-      alpha: 0.7,
-      duration: 1000,
-      yoyo: true,
-      repeat: -1,
-      ease: "Power2",
+    // Title, drawn with a hard offset shadow instead of a soft glow.
+    this.createHardShadowText(600, 190, "ROCKET\nCANDLE", {
+      fontFamily: PIXEL_FONT,
+      fontSize: "40px",
+      color: "#F6F740",
+      align: "center",
+      lineSpacing: 10,
     });
 
-    // Create subtitle
-    this.add
-      .text(600, 260, "Loading Market Data...", {
-        fontSize: "22px", // Increased from 20px
-        fill: "#87ceeb",
-        fontFamily: "Pixelify Sans, Arial",
+    // Blinking status label - a stepped on/off blink, not a fade.
+    const readingLabel = this.add
+      .text(600, 270, "READING THE MARKET", {
+        fontFamily: PIXEL_FONT,
+        fontSize: "13px",
+        color: "#3F88C5",
       })
       .setOrigin(0.5);
 
-    // Create progress bar container with themed styling
-    const progressContainer = this.add.graphics();
-    progressContainer.lineStyle(2, 0x87ceeb);
-    progressContainer.strokeRoundedRect(450, 320, 300, 30, 15);
-    progressContainer.fillStyle(0x2c3e50);
-    progressContainer.fillRoundedRect(450, 320, 300, 30, 15);
+    this.time.addEvent({
+      delay: 500,
+      loop: true,
+      callback: () => readingLabel.setVisible(!readingLabel.visible),
+    });
 
-    // Create progress bar fill
+    // Progress bar frame: ink border, well background, no radius.
+    const barX = 600 - 170;
+    const barY = 310;
+    const barWidth = 340;
+    const barHeight = 26;
+    const border = 4;
+
+    this.add
+      .rectangle(600, barY + barHeight / 2, barWidth, barHeight, WELL)
+      .setStrokeStyle(border, INK);
+
+    // Progress bar fill
     const progressBar = this.add.graphics();
 
-    // Create loading percentage text
+    // Loading percentage text
     const percentText = this.add
-      .text(600, 335, "0%", {
-        fontSize: "18px", // Increased from 16px
-        fill: "#ffffff",
-        fontFamily: "Pixelify Sans, Arial",
-        fontStyle: "bold",
+      .text(600, barY + barHeight + 26, "0%", {
+        fontFamily: PIXEL_FONT,
+        fontSize: "14px",
+        color: "#FFFFFF",
       })
       .setOrigin(0.5);
 
-    // Create loading tips
+    // Loading tips - prose face, not the pixel face
     const tips = [
-      "💡 Use angle and power sliders to aim your rockets",
-      "💡 Each level has only 3 attempts - make them count!",
-      "💡 Destroy all enemies to complete each level",
-      "💡 Watch the trajectory preview to plan your shots",
-      "💡 Green candlesticks = Bull market, Red = Bear market",
+      "Use angle and power sliders to aim your rockets.",
+      "Each level has only 3 attempts - make them count.",
+      "Destroy all enemies to complete each level.",
+      "Watch the trajectory preview to plan your shots.",
+      "Green candlesticks mean a bull market, red means a bear market.",
     ];
 
     const randomTip = tips[Math.floor(Math.random() * tips.length)];
-    const _tipText = this.add
-      .text(600, 420, randomTip, {
-        fontSize: "16px", // Increased from 14px
-        fill: "#ffaa00",
-        fontFamily: "Pixelify Sans, Arial",
-        wordWrap: { width: 500 },
+    this.add
+      .text(600, barY + barHeight + 70, `TIP: ${randomTip}`, {
+        fontFamily: PROSE_FONT,
+        fontSize: "17px",
+        color: "rgba(255,255,255,0.65)",
+        wordWrap: { width: 620 },
         align: "center",
       })
       .setOrigin(0.5);
 
-    // Add floating rocket animation
-    this.createFloatingRocket();
-
-    // Update loading bar with smooth animation
+    // Update loading bar with the fill only - no glow, hard edges.
     this.load.on("progress", (value) => {
-      // Update progress bar
       progressBar.clear();
-      progressBar.fillStyle(0x00ff00);
-      progressBar.fillRoundedRect(452, 322, (300 - 4) * value, 26, 13);
+      progressBar.fillStyle(RED);
+      progressBar.fillRect(
+        barX + border,
+        barY + border,
+        (barWidth - border * 2) * value,
+        barHeight - border * 2
+      );
 
-      // Add progress bar glow
-      if (value > 0) {
-        progressBar.lineStyle(1, 0x00ff00, 0.5);
-        progressBar.strokeRoundedRect(450, 320, 300 * value, 30, 15);
-      }
-
-      // Update percentage
       percentText.setText(`${Math.round(value * 100)}%`);
     });
+
+    // Bottom candlestick-strip footer - a flat blue bar with ink notches,
+    // the canvas equivalent of the design's dashed strip.
+    this.createFooterStrip();
 
     // Load background image
     this.load.image("game-background", "assets/background.png");
@@ -152,114 +158,52 @@ export class PreloadScene extends Phaser.Scene {
 
     // Generate only fallback assets that we still need (blocks, particles, etc.)
     AssetGenerator.generateAssets(this);
-
-    //console.log("📦 Assets preloaded successfully");
   }
 
   /**
-   * Create animated star field background
+   * Draw text with a hard, un-blurred offset shadow instead of a stroke
+   * glow - the canvas equivalent of the design's `text-shadow:6px 6px 0`.
    */
-  createStarField() {
-    // Create multiple layers of stars for depth effect
-    for (let layer = 0; layer < 3; layer++) {
-      const starCount = 20 - layer * 5; // Fewer stars in each layer
-      const alpha = 0.8 - layer * 0.2; // Dimmer stars in background
-      const _speed = (layer + 1) * 0.5; // Different speeds for parallax
-
-      for (let i = 0; i < starCount; i++) {
-        const star = this.add.circle(
-          Math.random() * 1200,
-          Math.random() * 600,
-          Math.random() * 2 + 1,
-          0xffffff,
-          alpha
-        );
-
-        // Add twinkling animation
-        this.tweens.add({
-          targets: star,
-          alpha: alpha * 0.3,
-          duration: Math.random() * 2000 + 1000,
-          yoyo: true,
-          repeat: -1,
-          ease: "Power2",
-        });
-
-        // Add slow drift animation
-        this.tweens.add({
-          targets: star,
-          x: star.x + (Math.random() - 0.5) * 100,
-          y: star.y + (Math.random() - 0.5) * 100,
-          duration: Math.random() * 10000 + 5000,
-          yoyo: true,
-          repeat: -1,
-          ease: "Sine.easeInOut",
-        });
-      }
-    }
-
-    //console.log("✨ Star field created");
-  }
-
-  /**
-   * Create floating rocket animation
-   */
-  createFloatingRocket() {
-    // Create rocket emoji as floating element
-    const rocket = this.add
-      .text(200, 400, "🚀", {
-        fontSize: "32px",
-      })
+  createHardShadowText(x, y, text, style) {
+    this.add
+      .text(x + 4, y + 4, text, { ...style, color: "#14161A" })
       .setOrigin(0.5);
+    return this.add.text(x, y, text, style).setOrigin(0.5);
+  }
 
-    // Add floating animation
-    this.tweens.add({
-      targets: rocket,
-      y: 380,
-      duration: 2000,
-      yoyo: true,
-      repeat: -1,
-      ease: "Sine.easeInOut",
+  /**
+   * A handful of flat, static ink-and-white blips standing in for the old
+   * twinkling star field. Fixed positions, no animation, so the loading
+   * frame never reflows or redraws while it holds.
+   */
+  createBlips() {
+    const positions = [
+      { x: 120, y: 90, a: 0.6 },
+      { x: 1060, y: 110, a: 0.5 },
+      { x: 200, y: 480, a: 0.35 },
+      { x: 980, y: 460, a: 0.45 },
+      { x: 600, y: 60, a: 0.3 },
+    ];
+
+    positions.forEach(({ x, y, a }) => {
+      this.add.rectangle(x, y, 6, 6, WHITE, a);
     });
+  }
 
-    // Add subtle rotation
-    this.tweens.add({
-      targets: rocket,
-      rotation: 0.1,
-      duration: 3000,
-      yoyo: true,
-      repeat: -1,
-      ease: "Power1",
-    });
-
-    // Add trail effect
-    const _trail = this.add.graphics();
-    this.time.addEvent({
-      delay: 100,
-      callback: () => {
-        // Add small trail dots behind rocket
-        const dot = this.add.circle(
-          rocket.x - 20,
-          rocket.y + Math.random() * 10 - 5,
-          2,
-          0xffaa00,
-          0.6
-        );
-
-        // Fade out trail dot
-        this.tweens.add({
-          targets: dot,
-          alpha: 0,
-          scale: 0,
-          duration: 1000,
-          ease: "Power2",
-          onComplete: () => dot.destroy(),
-        });
-      },
-      loop: true,
-    });
-
-    //console.log("🚀 Floating rocket animation created");
+  /**
+   * Flat footer strip with a repeating ink notch pattern, matching the
+   * dashed bottom edge on the loading screen mock.
+   */
+  createFooterStrip() {
+    const height = 14;
+    const notch = 14;
+    const strip = this.add.graphics();
+    strip.fillStyle(BLUE, 1);
+    strip.fillRect(0, 600 - height, 1200, height);
+    strip.fillStyle(INK, 1);
+    for (let x = 0; x < 1200; x += notch) {
+      strip.fillRect(x, 600 - height, notch / 2, height);
+    }
   }
 
   /**
@@ -293,36 +237,15 @@ export class PreloadScene extends Phaser.Scene {
   create() {
     this.loadMarketRun();
 
-    // Create completion message
-    const completeText = this.add
-      .text(600, 480, "Ready to Launch! 🎯", {
-        fontSize: "18px",
-        fill: "#00ff00",
-        fontFamily: "Pixelify Sans, Arial",
-        fontStyle: "bold",
-      })
-      .setOrigin(0.5)
-      .setAlpha(0);
-
-    // Fade in completion message
-    this.tweens.add({
-      targets: completeText,
-      alpha: 1,
-      duration: 500,
-      ease: "Power2",
-    });
-
     // Wait a moment to show the loading screen, then transition with fade
     this.time.delayedCall(1500, () => {
       // Fade out current scene
-      this.cameras.main.fadeOut(800, 26, 26, 46); // Fade to menu background color
+      this.cameras.main.fadeOut(800, 42, 45, 52); // Fade to menu background color (#2A2D34)
 
       // Start menu scene after fade
       this.cameras.main.once("camerafadeoutcomplete", () => {
         this.scene.start("MenuScene");
       });
     });
-
-    //console.log("✅ Loading complete - transitioning to menu");
   }
 }

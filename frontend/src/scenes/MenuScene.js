@@ -1,9 +1,20 @@
-import { UIComponents } from "@/components/UIComponents.js";
 import {
   DEFAULT_MARKET_ID,
   GAME_MARKETS,
 } from "@/data/DreamdexMarketFeed.js";
 import { MarketDataProvider } from "@/data/MarketDataProvider.js";
+
+// Redesign palette - flat, no gradients, no blur. See context/redesign board,
+// section "scenes" (LOADING / MENU / END OF RUN).
+const INK = 0x14161a;
+const WELL = 0x1b1e23;
+const RED = 0xe94f37;
+const YELLOW = 0xf6f740;
+
+const PIXEL_FONT = '"Press Start 2P", monospace';
+const MONO_FONT = '"Geist Mono", monospace';
+
+const SHADOW_OFFSET = 5;
 
 /**
  * MenuScene - Main menu with play button and last game score
@@ -16,16 +27,16 @@ export class MenuScene extends Phaser.Scene {
 
   create() {
     // Set background
-    this.cameras.main.setBackgroundColor("#1a1a2e");
+    this.cameras.main.setBackgroundColor("#2A2D34");
 
     // Initialize sounds
     this.sounds = {
       menu: this.sound.add("menu-sound", { volume: 0.3, loop: true }),
     };
 
-    // Create animated starry background
-    this.createStarryBackground();
-    
+    // Flat scanline backdrop instead of the old star field.
+    this.createScanlines();
+
     // Start background music for menu (delay to ensure no overlap)
     this.time.delayedCall(100, () => {
       if (this.sounds.menu && !this.sounds.menu.isPlaying) {
@@ -34,25 +45,11 @@ export class MenuScene extends Phaser.Scene {
     });
 
     // Create title
-    this.add
-      .text(600, 150, "🚀 ROCKET CANDLE", {
-        fontSize: "72px",
-        fill: "#ffffff",
-        fontStyle: "bold",
-        fontFamily: "Orbitron, Arial",
-        stroke: "#00d4ff",
-        strokeThickness: 3,
-      })
-      .setOrigin(0.5);
-
-    // Create subtitle
-    this.add
-      .text(600, 220, "Destroy enemies in candlestick markets!", {
-        fontSize: "28px", // Increased from 24px
-        fill: "#87ceeb",
-        fontFamily: "Pixelify Sans, Arial",
-      })
-      .setOrigin(0.5);
+    this.createHardShadowText(600, 55, "ROCKET CANDLE", {
+      fontFamily: PIXEL_FONT,
+      fontSize: "28px",
+      color: "#F6F740",
+    });
 
     // Display player stats from blockchain
     this.displayPlayerStats();
@@ -60,46 +57,117 @@ export class MenuScene extends Phaser.Scene {
     // Let the player choose which market they play
     this.createMarketPicker();
 
-    // Create play button - simplified without wallet checks
-    const playButton = UIComponents.createButton(
-      this,
+    // Create play button
+    this.playButton = this.createPixelButton(
       600,
-      450,
+      392,
+      260,
+      66,
       "PLAY GAME",
-      () => this.startGame(),
-      {
-        width: 250,
-        height: 60,
-        fontSize: "22px", // Increased from 20px
-        fill: 0x00cc00, // Green for play
-        hoverFill: 0x00aa00, // Darker green on hover
-        textColor: "#ffffff", // White text for better contrast
-        borderRadius: 30, // Rounded corners
-        fontFamily: "Pixelify Sans, Inter, sans-serif", // Consistent font
-      }
+      { fill: YELLOW, textColor: "#14161A", fontSize: "16px" },
+      () => this.startGame()
     );
-
-    // Store reference for potential updates
-    this.playButton = playButton;
 
     // Create instructions
     this.add
-      .text(600, 510, "Use sliders to aim, LAUNCH to fire!", {
-        fontSize: "20px", // Increased from 18px
-        fill: "#aaaaaa",
-        fontFamily: "Pixelify Sans, Arial",
+      .text(600, 460, "AIM WITH SLIDERS · LAUNCH TO FIRE", {
+        fontFamily: PIXEL_FONT,
+        fontSize: "10px",
+        color: "rgba(255,255,255,0.55)",
       })
       .setOrigin(0.5);
 
     this.add
-      .text(600, 540, "Limited attempts per level - make them count!", {
-        fontSize: "18px", // Increased from 16px
-        fill: "#ff6666",
-        fontFamily: "Pixelify Sans, Arial",
+      .text(600, 484, "LIMITED ATTEMPTS PER LEVEL", {
+        fontFamily: PIXEL_FONT,
+        fontSize: "10px",
+        color: "#E94F37",
+      })
+      .setOrigin(0.5);
+  }
+
+  /**
+   * Draw text with a hard, un-blurred offset shadow instead of a stroke
+   * glow - the canvas equivalent of the design's `text-shadow:4px 4px 0`.
+   */
+  createHardShadowText(x, y, text, style) {
+    this.add
+      .text(x + 4, y + 4, text, { ...style, color: "#14161A" })
+      .setOrigin(0.5);
+    return this.add.text(x, y, text, style).setOrigin(0.5);
+  }
+
+  /**
+   * Flat, static scanline backdrop standing in for the old twinkling star
+   * field and floating emoji - the pixel face and palette carry the
+   * character now, so the backdrop just has to read as "this surface".
+   */
+  createScanlines() {
+    const strip = this.add.graphics();
+    strip.fillStyle(INK, 0.12);
+    for (let y = 0; y < 600; y += 4) {
+      strip.fillRect(0, y, 1200, 2);
+    }
+  }
+
+  /**
+   * A pixel-face button that follows the surface rule: 4px ink border, no
+   * corner radius, hard offset shadow with no blur. Pressing moves the face
+   * onto its own shadow so the depression is visible and cheap to draw.
+   */
+  createPixelButton(x, y, width, height, label, colors, onClick) {
+    const container = this.add.container(x, y);
+
+    const shadow = this.add.rectangle(
+      SHADOW_OFFSET,
+      SHADOW_OFFSET,
+      width,
+      height,
+      INK
+    );
+    const bg = this.add
+      .rectangle(0, 0, width, height, colors.fill)
+      .setStrokeStyle(4, INK);
+    const text = this.add
+      .text(0, 0, label, {
+        fontFamily: PIXEL_FONT,
+        fontSize: colors.fontSize || "12px",
+        color: colors.textColor || "#FFFFFF",
+        align: "center",
       })
       .setOrigin(0.5);
 
-    //console.log("🎮 Main menu created");
+    container.add([shadow, bg, text]);
+
+    const hitArea = new Phaser.Geom.Rectangle(
+      -width / 2,
+      -height / 2,
+      width,
+      height
+    );
+    container.setInteractive(hitArea, Phaser.Geom.Rectangle.Contains);
+
+    const rest = () => {
+      bg.setPosition(0, 0);
+      text.setPosition(0, 0);
+    };
+    const press = () => {
+      bg.setPosition(SHADOW_OFFSET, SHADOW_OFFSET);
+      text.setPosition(SHADOW_OFFSET, SHADOW_OFFSET);
+    };
+
+    container.on("pointerover", () => bg.setAlpha(0.92));
+    container.on("pointerout", () => {
+      bg.setAlpha(1);
+      rest();
+    });
+    container.on("pointerdown", press);
+    container.on("pointerup", () => {
+      rest();
+      if (onClick) onClick();
+    });
+
+    return { container, bg, text };
   }
 
   /**
@@ -111,54 +179,91 @@ export class MenuScene extends Phaser.Scene {
    */
   createMarketPicker() {
     this.add
-      .text(600, 300, "CHOOSE YOUR MARKET", {
-        fontSize: "18px",
-        fill: "#87ceeb",
-        fontFamily: "Pixelify Sans, Arial",
+      .text(600, 140, "CHOOSE YOUR MARKET", {
+        fontFamily: PIXEL_FONT,
+        fontSize: "12px",
+        color: "#3F88C5",
       })
       .setOrigin(0.5);
 
+    // The four chips wrap into a 2x2 grid rather than a single row fixed at
+    // 220px spacing, so they always stay inside the 1200px stage.
+    const chipWidth = 340;
+    const chipHeight = 56;
+    const gapX = 20;
+    const gapY = 16;
+    const columns = 2;
+    const gridWidth = columns * chipWidth + (columns - 1) * gapX;
+    const startX = 600 - gridWidth / 2 + chipWidth / 2;
+    const rowY = [180, 180 + chipHeight + gapY];
+
     this.marketChips = [];
-    const spacing = 220;
-    const startX = 600 - ((GAME_MARKETS.length - 1) * spacing) / 2;
 
     GAME_MARKETS.forEach((market, index) => {
-      const x = startX + index * spacing;
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      const x = startX + col * (chipWidth + gapX);
+      const y = rowY[row];
+
+      // Hard offset shadow behind every chip, per the surface rule.
+      this.add.rectangle(
+        x + SHADOW_OFFSET,
+        y + SHADOW_OFFSET,
+        chipWidth,
+        chipHeight,
+        INK
+      );
+
       const chip = this.add
-        .graphics()
-        .setInteractive(
-          new Phaser.Geom.Rectangle(x - 100, 330, 200, 56),
-          Phaser.Geom.Rectangle.Contains
-        )
+        .rectangle(x, y, chipWidth, chipHeight, WELL)
+        .setStrokeStyle(3, INK)
+        .setInteractive({ useHandCursor: true })
         .on("pointerdown", () => this.selectMarket(market.id));
 
       const label = this.add
-        .text(x, 344, market.label, {
-          fontSize: "20px",
-          fill: "#ffffff",
-          fontFamily: "Pixelify Sans, Arial",
+        .text(x, y - 12, market.label, {
+          fontFamily: PIXEL_FONT,
+          fontSize: "13px",
+          color: "#FFFFFF",
         })
         .setOrigin(0.5);
 
       const blurb = this.add
-        .text(x, 368, market.blurb, {
-          fontSize: "12px",
-          fill: "#9aa4c4",
-          fontFamily: "Pixelify Sans, Arial",
-          wordWrap: { width: 190 },
+        .text(x, y + 14, market.blurb, {
+          fontFamily: MONO_FONT,
+          fontSize: "10px",
+          color: "rgba(255,255,255,0.55)",
+          wordWrap: { width: chipWidth - 30 },
           align: "center",
         })
         .setOrigin(0.5, 0.5);
 
-      this.marketChips.push({ market, chip, label, blurb, x });
+      this.marketChips.push({ market, chip, label, blurb, x, y });
     });
 
-    // One line telling the player what the chosen market is actually doing.
+    // The provenance line - one of the most important facts in the product,
+    // so it gets its own bordered panel and the mono face, in blue.
+    const panelY = 300;
+    const panelHeight = 54;
+
+    this.add.rectangle(
+      600 + SHADOW_OFFSET,
+      panelY + SHADOW_OFFSET,
+      gridWidth,
+      panelHeight,
+      INK
+    );
+    this.add
+      .rectangle(600, panelY, gridWidth, panelHeight, WELL)
+      .setStrokeStyle(3, INK);
+
     this.marketStatusText = this.add
-      .text(600, 410, "", {
+      .text(600, panelY, "", {
+        fontFamily: MONO_FONT,
         fontSize: "14px",
-        fill: "#9aa4c4",
-        fontFamily: "Pixelify Sans, Arial",
+        color: "#3F88C5",
+        wordWrap: { width: gridWidth - 40 },
+        align: "center",
       })
       .setOrigin(0.5);
 
@@ -191,13 +296,13 @@ export class MenuScene extends Phaser.Scene {
    * Redraw the chips so the chosen one is obvious.
    */
   paintMarketChips() {
-    this.marketChips.forEach(({ market, chip, x }) => {
+    this.marketChips.forEach(({ market, chip, blurb }) => {
       const chosen = market.id === this.selectedMarketId;
-      chip.clear();
-      chip.fillStyle(chosen ? 0x1f6feb : 0x24263a);
-      chip.fillRoundedRect(x - 100, 330, 200, 56, 10);
-      chip.lineStyle(2, chosen ? 0x58a6ff : 0x3a3d55);
-      chip.strokeRoundedRect(x - 100, 330, 200, 56, 10);
+      chip.setFillStyle(chosen ? RED : WELL);
+      chip.setStrokeStyle(chosen ? 4 : 3, INK);
+      blurb.setColor(
+        chosen ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.55)"
+      );
     });
   }
 
@@ -212,14 +317,14 @@ export class MenuScene extends Phaser.Scene {
     if (!this.marketStatusText) return;
 
     if (this.marketLoading) {
-      this.marketStatusText.setText("Reading the market...");
+      this.marketStatusText.setText("READING THE MARKET...");
       return;
     }
 
     const run = this.registry.get("marketRun");
 
     if (!run || !run.live) {
-      this.marketStatusText.setText("Simulated market - exchange unreachable");
+      this.marketStatusText.setText("SIMULATED MARKET - EXCHANGE UNREACHABLE");
       return;
     }
 
@@ -229,7 +334,7 @@ export class MenuScene extends Phaser.Scene {
       : "live on this network";
 
     this.marketStatusText.setText(
-      `${run.market.label} - ${stages} of ${run.levels.length} stages from real trading, ${origin}`
+      `${run.market.label} — ${stages} of ${run.levels.length} stages from real trading, ${origin}`
     );
   }
 
@@ -277,11 +382,9 @@ export class MenuScene extends Phaser.Scene {
     // terrain, which is worse than making them wait a moment.
     if (this.marketLoading) return;
 
-    //console.log("🚀 Starting new game...");
-    
     // Stop all sounds before transitioning
     this.sound.stopAll();
-    
+
     this.scene.start("GameScene");
   }
 
@@ -289,13 +392,15 @@ export class MenuScene extends Phaser.Scene {
    * Display player stats from blockchain asynchronously
    */
   async displayPlayerStats() {
+    const statsY = 96;
+
     try {
       if (!window.web3Service || !window.walletManager?.isConnected) {
         this.add
-          .text(600, 280, "🔗 Connect wallet to see your stats", {
-            fontSize: "20px",
-            fill: "#aaaaaa",
-            fontFamily: "Pixelify Sans, Arial",
+          .text(600, statsY, "CONNECT WALLET TO SEE YOUR STATS", {
+            fontFamily: MONO_FONT,
+            fontSize: "13px",
+            color: "rgba(255,255,255,0.55)",
           })
           .setOrigin(0.5);
         return;
@@ -314,172 +419,36 @@ export class MenuScene extends Phaser.Scene {
         const bestScore = Math.max(...scores);
         const totalGames = scores.length;
 
-        // Display last game score
         this.add
-          .text(600, 280, `Last Game Score: ${lastScore}`, {
-            fontSize: "22px",
-            fill: "#ffaa00",
-            fontFamily: "Pixelify Sans, Arial",
-          })
-          .setOrigin(0.5);
-
-        // Display best score
-        this.add
-          .text(600, 310, `Best Score: ${bestScore}`, {
-            fontSize: "22px",
-            fill: "#00ff00",
-            fontFamily: "Pixelify Sans, Arial",
-          })
-          .setOrigin(0.5);
-
-        // Display total games played
-        this.add
-          .text(600, 340, `Games Played: ${totalGames}`, {
-            fontSize: "18px",
-            fill: "#87ceeb",
-            fontFamily: "Pixelify Sans, Arial",
-          })
+          .text(
+            600,
+            statsY,
+            `LAST ${lastScore} · BEST ${bestScore} · GAMES ${totalGames}`,
+            {
+              fontFamily: MONO_FONT,
+              fontSize: "14px",
+              color: "rgba(255,255,255,0.7)",
+            }
+          )
           .setOrigin(0.5);
       } else {
         this.add
-          .text(600, 280, "🎮 Play your first game to see stats!", {
-            fontSize: "20px",
-            fill: "#aaaaaa",
-            fontFamily: "Pixelify Sans, Arial",
+          .text(600, statsY, "PLAY YOUR FIRST GAME TO SEE STATS", {
+            fontFamily: MONO_FONT,
+            fontSize: "13px",
+            color: "rgba(255,255,255,0.55)",
           })
           .setOrigin(0.5);
       }
     } catch (error) {
       console.warn("Failed to load player stats from blockchain:", error);
       this.add
-        .text(600, 280, "❌ Failed to load stats", {
-          fontSize: "20px",
-          fill: "#ff6666",
-          fontFamily: "Pixelify Sans, Arial",
+        .text(600, statsY, "FAILED TO LOAD STATS", {
+          fontFamily: MONO_FONT,
+          fontSize: "13px",
+          color: "#E94F37",
         })
         .setOrigin(0.5);
-    }
-  }
-
-  /**
-   * Create animated starry background
-   */
-  createStarryBackground() {
-    // Create container for stars
-    const starContainer = this.add.container(0, 0);
-    starContainer.setAlpha(0.4); // Set overall opacity for the star container
-
-    // Generate random stars
-    for (let i = 0; i < 70; i++) {
-      // Reduced number of stars
-      const x = Math.random() * 1200;
-      const y = Math.random() * 600;
-      const size = Math.random() * 1.5 + 0.3; // Smaller stars
-      const alpha = Math.random() * 0.6 + 0.1; // Less bright stars
-
-      const star = this.add.circle(x, y, size, 0xffffff, alpha);
-      starContainer.add(star);
-
-      // Add twinkling animation
-      this.tweens.add({
-        targets: star,
-        alpha: Math.random() * 0.3 + 0.1,
-        duration: Math.random() * 2000 + 1000,
-        yoyo: true,
-        repeat: -1,
-        ease: "Sine.easeInOut",
-      });
-    }
-
-    // Add some larger glowing stars
-    for (let i = 0; i < 10; i++) {
-      // Reduced number of glowing stars
-      const x = Math.random() * 1200;
-      const y = Math.random() * 600;
-      const size = Math.random() * 2.5 + 1.5; // Slightly smaller glowing stars
-
-      const glowStar = this.add.circle(x, y, size, 0x87ceeb, 0.4); // Dimmer glow
-      starContainer.add(glowStar);
-
-      // Add pulsing animation
-      this.tweens.add({
-        targets: glowStar,
-        scaleX: 1.5,
-        scaleY: 1.5,
-        alpha: 0.3,
-        duration: Math.random() * 3000 + 2000,
-        yoyo: true,
-        repeat: -1,
-        ease: "Sine.easeInOut",
-      });
-    }
-
-    // Add floating elements
-    this.createFloatingElements();
-
-    //console.log("✨ Starry background created for menu");
-  }
-
-  /**
-   * Create floating elements in the background
-   */
-  createFloatingElements() {
-    // Create floating rocket emojis
-    for (let i = 0; i < 3; i++) {
-      const x = Math.random() * 1200;
-      const y = Math.random() * 600;
-
-      const rocket = this.add
-        .text(x, y, "🚀", {
-          fontSize: "20px",
-          fill: "#ffffff",
-          alpha: 0.2,
-        })
-        .setOrigin(0.5);
-
-      // Add floating animation
-      this.tweens.add({
-        targets: rocket,
-        y: y - 40,
-        duration: Math.random() * 5000 + 4000,
-        yoyo: true,
-        repeat: -1,
-        ease: "Sine.easeInOut",
-      });
-
-      // Add slow rotation
-      this.tweens.add({
-        targets: rocket,
-        rotation: Math.PI * 2,
-        duration: Math.random() * 8000 + 6000,
-        repeat: -1,
-        ease: "Linear",
-      });
-    }
-
-    // Create floating candlestick emojis
-    for (let i = 0; i < 4; i++) {
-      const x = Math.random() * 1200;
-      const y = Math.random() * 600;
-
-      const candle = this.add
-        .text(x, y, "🕯️", {
-          fontSize: "18px",
-          fill: "#ffaa00",
-          alpha: 0.15,
-        })
-        .setOrigin(0.5);
-
-      // Add gentle floating animation
-      this.tweens.add({
-        targets: candle,
-        y: y - 30,
-        x: x + Math.random() * 40 - 20,
-        duration: Math.random() * 6000 + 5000,
-        yoyo: true,
-        repeat: -1,
-        ease: "Sine.easeInOut",
-      });
     }
   }
 }

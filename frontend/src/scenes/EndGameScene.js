@@ -1,4 +1,13 @@
-import { UIComponents } from "@/components/UIComponents.js";
+// Redesign palette - flat, no gradients, no blur. See context/redesign board,
+// section "scenes" (LOADING / MENU / END OF RUN).
+const INK = 0x14161a;
+const RED = 0xe94f37;
+const YELLOW = 0xf6f740;
+const SURFACE = 0x22252b;
+
+const PIXEL_FONT = '"Press Start 2P", monospace';
+
+const SHADOW_OFFSET = 5;
 
 /**
  * EndGameScene - Game over screen with score and restart options
@@ -19,16 +28,20 @@ export class EndGameScene extends Phaser.Scene {
 
   create() {
     // Set background
-    this.cameras.main.setBackgroundColor("#1a1a2e");
+    this.cameras.main.setBackgroundColor("#2A2D34");
 
     // Initialize sounds
     this.sounds = {
       menu: this.sound.add("menu-sound", { volume: 0.3, loop: true }),
     };
 
-    // Create animated starry background
-    this.createStarryBackground();
-    
+    // Flat scanline backdrop instead of the old star field.
+    this.createScanlines();
+
+    // Determine if this is a win or loss - drives the top notch strip color
+    const isVictory = this.reason === "completed";
+    this.createNotchStrip(isVictory ? YELLOW : RED);
+
     // Start background music for end game menu (delay to ensure no overlap)
     this.time.delayedCall(100, () => {
       if (this.sounds.menu && !this.sounds.menu.isPlaying) {
@@ -39,102 +52,180 @@ export class EndGameScene extends Phaser.Scene {
     // Notify parent about game completion for blockchain submission
     this.notifyGameCompletion();
 
-    // Determine if this is a win or loss
-    const isVictory = this.reason === "completed";
-    const titleText = isVictory ? "🏆 VICTORY!" : "💥 GAME OVER";
-    const titleColor = isVictory ? "#00ff00" : "#ff6666";
+    const titleText = isVictory ? "VICTORY" : "GAME OVER";
+    const titleColor = isVictory ? "#F6F740" : "#E94F37";
 
     // Create title
-    this.add
-      .text(600, 120, titleText, {
-        fontSize: "64px", // Increased from 56px
-        fill: titleColor,
-        fontStyle: "bold",
-        fontFamily: "Pixelify Sans, Arial",
-      })
-      .setOrigin(0.5);
+    this.createHardShadowText(600, 90, titleText, {
+      fontFamily: PIXEL_FONT,
+      fontSize: "36px",
+      color: titleColor,
+    });
 
-    // Create score display
+    // Create stats column
     this.add
-      .text(600, 200, `Final Score: ${this.finalScore}`, {
-        fontSize: "36px", // Increased from 32px
-        fill: "#ffffff",
-        fontFamily: "Pixelify Sans, Arial",
-      })
-      .setOrigin(0.5);
-
-    // Create stats
-    this.add
-      .text(600, 250, `Levels Completed: ${this.levelsCompleted}`, {
-        fontSize: "28px", // Increased from 24px
-        fill: "#87ceeb",
-        fontFamily: "Pixelify Sans, Arial",
+      .text(600, 165, `SCORE ${this.finalScore}`, {
+        fontFamily: PIXEL_FONT,
+        fontSize: "16px",
+        color: "#FFFFFF",
       })
       .setOrigin(0.5);
 
     this.add
-      .text(600, 280, `Total Attempts Used: ${this.totalAttempts}`, {
-        fontSize: "28px", // Increased from 24px
-        fill: "#ffaa00",
-        fontFamily: "Pixelify Sans, Arial",
+      .text(600, 200, `LEVELS ${this.levelsCompleted} / 7`, {
+        fontFamily: PIXEL_FONT,
+        fontSize: "12px",
+        color: "rgba(255,255,255,0.6)",
+      })
+      .setOrigin(0.5);
+
+    this.add
+      .text(600, 228, `ATTEMPTS ${this.totalAttempts}`, {
+        fontFamily: PIXEL_FONT,
+        fontSize: "12px",
+        color: "rgba(255,255,255,0.6)",
       })
       .setOrigin(0.5);
 
     // Show efficiency rating
     const efficiency = this.calculateEfficiency();
     this.add
-      .text(600, 310, `Efficiency: ${efficiency}`, {
-        fontSize: "22px", // Increased from 20px
-        fill: "#ff6b6b",
-        fontFamily: "Pixelify Sans, Arial",
+      .text(600, 256, `EFFICIENCY: ${efficiency.toUpperCase()}`, {
+        fontFamily: PIXEL_FONT,
+        fontSize: "12px",
+        color: "#3F88C5",
       })
       .setOrigin(0.5);
 
     // Show best score comparison (async)
     this.displayBestScoreComparison();
 
-    // Create restart button with purple accent
-    UIComponents.createButton(
-      this,
-      500,
-      420,
+    // Create restart button - primary, yellow
+    this.createPixelButton(
+      480,
+      440,
+      210,
+      66,
       "PLAY AGAIN",
-      () => this.restartGame(),
-      {
-        width: 180,
-        height: 60,
-        fontSize: "24px",
-        fill: 0x8b5cf6, // Purple
-        hoverFill: 0x7c3aed, // Darker purple
-        textColor: "#ffffff",
-        strokeColor: "#a855f7",
-        strokeWidth: 2,
-      }
+      { fill: YELLOW, textColor: "#14161A", fontSize: "13px" },
+      () => this.restartGame()
     );
 
-    // Create menu button with purple accent
-    UIComponents.createButton(
-      this,
-      700,
-      420,
-      "MAIN MENU",
-      () => this.goToMenu(),
-      {
-        width: 180,
-        height: 60,
-        fontSize: "24px",
-        fill: 0x6366f1, // Indigo purple
-        hoverFill: 0x4f46e5, // Darker indigo purple
-        textColor: "#ffffff",
-        strokeColor: "#818cf8",
-        strokeWidth: 2,
-      }
+    // Create menu button - secondary, surface
+    this.createPixelButton(
+      720,
+      440,
+      210,
+      66,
+      "MENU",
+      { fill: SURFACE, textColor: "#FFFFFF", fontSize: "13px" },
+      () => this.goToMenu()
     );
 
     // Add celebratory particles for victory
     if (isVictory) {
       this.createCelebrationEffect();
     }
+  }
+
+  /**
+   * Draw text with a hard, un-blurred offset shadow instead of a stroke
+   * glow - the canvas equivalent of the design's `text-shadow:5px 5px 0`.
+   */
+  createHardShadowText(x, y, text, style) {
+    this.add
+      .text(x + 5, y + 5, text, { ...style, color: "#14161A" })
+      .setOrigin(0.5);
+    return this.add.text(x, y, text, style).setOrigin(0.5);
+  }
+
+  /**
+   * Flat, static scanline backdrop standing in for the old twinkling star
+   * field and floating rocket emoji.
+   */
+  createScanlines() {
+    const strip = this.add.graphics();
+    strip.fillStyle(INK, 0.12);
+    for (let y = 0; y < 600; y += 4) {
+      strip.fillRect(0, y, 1200, 2);
+    }
+  }
+
+  /**
+   * A flat top strip with a repeating ink notch pattern, matching the
+   * dashed top edge on the end-of-run screen mock. Yellow on a win, red on
+   * a loss, so the outcome reads before any text does.
+   */
+  createNotchStrip(color) {
+    const height = 14;
+    const notch = 14;
+    const strip = this.add.graphics();
+    strip.fillStyle(color, 1);
+    strip.fillRect(0, 0, 1200, height);
+    strip.fillStyle(INK, 1);
+    for (let x = 0; x < 1200; x += notch) {
+      strip.fillRect(x, 0, notch / 2, height);
+    }
+  }
+
+  /**
+   * A pixel-face button that follows the surface rule: 4px ink border, no
+   * corner radius, hard offset shadow with no blur. Pressing moves the face
+   * onto its own shadow so the depression is visible and cheap to draw.
+   */
+  createPixelButton(x, y, width, height, label, colors, onClick) {
+    const container = this.add.container(x, y);
+
+    const shadow = this.add.rectangle(
+      SHADOW_OFFSET,
+      SHADOW_OFFSET,
+      width,
+      height,
+      INK
+    );
+    const bg = this.add
+      .rectangle(0, 0, width, height, colors.fill)
+      .setStrokeStyle(4, INK);
+    const text = this.add
+      .text(0, 0, label, {
+        fontFamily: PIXEL_FONT,
+        fontSize: colors.fontSize || "12px",
+        color: colors.textColor || "#FFFFFF",
+        align: "center",
+      })
+      .setOrigin(0.5);
+
+    container.add([shadow, bg, text]);
+
+    const hitArea = new Phaser.Geom.Rectangle(
+      -width / 2,
+      -height / 2,
+      width,
+      height
+    );
+    container.setInteractive(hitArea, Phaser.Geom.Rectangle.Contains);
+
+    const rest = () => {
+      bg.setPosition(0, 0);
+      text.setPosition(0, 0);
+    };
+    const press = () => {
+      bg.setPosition(SHADOW_OFFSET, SHADOW_OFFSET);
+      text.setPosition(SHADOW_OFFSET, SHADOW_OFFSET);
+    };
+
+    container.on("pointerover", () => bg.setAlpha(0.92));
+    container.on("pointerout", () => {
+      bg.setAlpha(1);
+      rest();
+    });
+    container.on("pointerdown", press);
+    container.on("pointerup", () => {
+      rest();
+      if (onClick) onClick();
+    });
+
+    return { container, bg, text };
   }
 
   /**
@@ -157,8 +248,9 @@ export class EndGameScene extends Phaser.Scene {
    * Create celebration particle effect for victory
    */
   createCelebrationEffect() {
-    // Create multiple particle emitters for celebration
-    const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
+    // Create multiple particle emitters for celebration - palette colors
+    // only, no rainbow, so this still reads as this game's language.
+    const colors = [RED, YELLOW, 0x3f88c5, 0xffffff];
 
     for (let i = 0; i < 3; i++) {
       const x = 400 + i * 200;
@@ -186,20 +278,22 @@ export class EndGameScene extends Phaser.Scene {
       const bestScore = await this.getBestScoreFromBlockchain();
 
       if (this.finalScore >= bestScore && this.finalScore > 0) {
+        const badgeWidth = 260;
+        const badgeHeight = 40;
+        this.add.rectangle(600, 298, badgeWidth, badgeHeight, RED).setStrokeStyle(3, INK);
         this.add
-          .text(600, 350, "🎉 NEW BEST SCORE! 🎉", {
-            fontSize: "28px", // Increased from 24px
-            fill: "#ffd700",
-            fontStyle: "bold",
-            fontFamily: "Pixelify Sans, Arial",
+          .text(600, 298, "NEW BEST SCORE", {
+            fontFamily: PIXEL_FONT,
+            fontSize: "11px",
+            color: "#FFFFFF",
           })
           .setOrigin(0.5);
       } else if (bestScore > 0) {
         this.add
-          .text(600, 350, `Best Score: ${bestScore}`, {
-            fontSize: "22px", // Increased from 20px
-            fill: "#aaaaaa",
-            fontFamily: "Pixelify Sans, Arial",
+          .text(600, 298, `BEST SCORE ${bestScore}`, {
+            fontFamily: PIXEL_FONT,
+            fontSize: "11px",
+            color: "rgba(255,255,255,0.55)",
           })
           .setOrigin(0.5);
       }
@@ -692,99 +786,5 @@ export class EndGameScene extends Phaser.Scene {
     this.sound.stopAll();
     
     this.scene.start("MenuScene");
-  }
-
-  /**
-   * Create animated starry background
-   */
-  createStarryBackground() {
-    // Create container for stars
-    const starContainer = this.add.container(0, 0);
-
-    // Generate random stars
-    for (let i = 0; i < 100; i++) {
-      const x = Math.random() * 1200;
-      const y = Math.random() * 600;
-      const size = Math.random() * 2 + 0.5;
-      const alpha = Math.random() * 0.8 + 0.2;
-
-      const star = this.add.circle(x, y, size, 0xffffff, alpha);
-      starContainer.add(star);
-
-      // Add twinkling animation
-      this.tweens.add({
-        targets: star,
-        alpha: Math.random() * 0.3 + 0.1,
-        duration: Math.random() * 2000 + 1000,
-        yoyo: true,
-        repeat: -1,
-        ease: "Sine.easeInOut",
-      });
-    }
-
-    // Add some larger glowing stars
-    for (let i = 0; i < 15; i++) {
-      const x = Math.random() * 1200;
-      const y = Math.random() * 600;
-      const size = Math.random() * 3 + 2;
-
-      const glowStar = this.add.circle(x, y, size, 0x87ceeb, 0.6);
-      starContainer.add(glowStar);
-
-      // Add pulsing animation
-      this.tweens.add({
-        targets: glowStar,
-        scaleX: 1.5,
-        scaleY: 1.5,
-        alpha: 0.3,
-        duration: Math.random() * 3000 + 2000,
-        yoyo: true,
-        repeat: -1,
-        ease: "Sine.easeInOut",
-      });
-    }
-
-    // Add floating rocket icons in the background
-    this.createFloatingRockets();
-
-    //console.log("✨ Starry background created for end game scene");
-  }
-
-  /**
-   * Create floating rocket icons in the background
-   */
-  createFloatingRockets() {
-    // Create 5 floating rocket emojis
-    for (let i = 0; i < 5; i++) {
-      const x = Math.random() * 1200;
-      const y = Math.random() * 600;
-
-      const rocket = this.add
-        .text(x, y, "🚀", {
-          fontSize: "24px",
-          fill: "#ffffff",
-          alpha: 0.3,
-        })
-        .setOrigin(0.5);
-
-      // Add floating animation
-      this.tweens.add({
-        targets: rocket,
-        y: y - 50,
-        duration: Math.random() * 4000 + 3000,
-        yoyo: true,
-        repeat: -1,
-        ease: "Sine.easeInOut",
-      });
-
-      // Add rotation animation
-      this.tweens.add({
-        targets: rocket,
-        rotation: Math.PI * 2,
-        duration: Math.random() * 6000 + 4000,
-        repeat: -1,
-        ease: "Linear",
-      });
-    }
   }
 }
