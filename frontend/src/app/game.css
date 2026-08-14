@@ -69,6 +69,12 @@
   gap: 8px;
   align-items: center;
   white-space: nowrap;
+  /* These are labels, so they take the pixel face like every other label in
+     the cabinet. Without it they inherited the prose font and were the only
+     thing in the status bar set in a different typeface. */
+  font-family: var(--rc-font-pixel);
+  font-size: 9px;
+  letter-spacing: 0.02em;
 }
 
 .gc-status-chip--yellow { color: var(--rc-yellow); }

@@ -804,7 +804,10 @@ export class GameScene extends Phaser.Scene {
     if (!this.canLaunch || this.gameOver) return;
 
     const strength = Math.max(0.4, Math.min(4, trade.magnitude));
-    this.cameras.main.shake(120 + strength * 60, 0.001 * strength);
+    // Intensity is a fraction of the viewport, so the old 0.001 moved the
+    // camera by well under a pixel - the tremor fired on every trade and was
+    // invisible. Enough travel to be felt, not enough to spoil an aim.
+    this.cameras.main.shake(120 + strength * 60, 0.004 * strength);
   }
 
   /**
@@ -816,7 +819,9 @@ export class GameScene extends Phaser.Scene {
     const wind = this.marketWindAcceleration();
     if (!wind) return "";
 
-    const arrow = wind > 0 ? "-->" : "<--";
+    // A single glyph, not an ASCII arrow. Two hyphens and an angle bracket
+    // wrap onto the next line as loose punctuation when the ticker is narrow.
+    const arrow = wind > 0 ? "\u2192" : "\u2190";
     const force = Math.abs(wind) > 40 ? "strong" : "light";
     return `  ·  wide spread, ${force} drift ${arrow}`;
   }
@@ -1053,7 +1058,13 @@ export class GameScene extends Phaser.Scene {
     const { side, quantity, price } = this.lastTrade;
     const book = this.describeBookHealth();
     const wind = this.describeWind();
-    return `${side === "buy" ? "BOUGHT" : "SOLD"} ${quantity} @ ${price}${book}${wind}`;
+
+    // Say whose trade this is. It belongs to somebody else on the exchange,
+    // not to the player - worded as a bare "SOLD 25" it reads as though they
+    // had just sold something, which in practice mode they cannot have done
+    // because they hold nothing at all.
+    const direction = side === "buy" ? "bought" : "sold";
+    return `someone ${direction} ${quantity} @ ${price}${book}${wind}`;
   }
 
   /**
@@ -2640,7 +2651,7 @@ export class GameScene extends Phaser.Scene {
         const alpha = Math.max(0, 1 - age);
 
         // Set line style with fading effect
-        rocket.trailGraphics.lineStyle(3, 0xff6600, alpha * 0.7);
+        rocket.trailGraphics.lineStyle(3, RC_YELLOW, alpha * 0.85);
         rocket.trailGraphics.beginPath();
         rocket.trailGraphics.moveTo(point1.x, point1.y);
         rocket.trailGraphics.lineTo(point2.x, point2.y);

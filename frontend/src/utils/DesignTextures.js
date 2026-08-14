@@ -131,13 +131,20 @@ export const DesignTextures = {
     paint(scene, "enemy-var3", enemy(2));
     paint(scene, "enemy-var4", enemy(3));
 
-    // The rocket, drawn pointing right - the scene rotates it to face travel.
+    // The rocket, drawn NOSE UP. The scene turns it to face its own velocity
+    // by adding a quarter turn, which only lands correctly if the art starts
+    // pointing up - drawn pointing right it flies permanently sideways.
     paint(scene, "rocket", (g, w, h) => {
-      panel(g, 6, 19, 34, 12, RED, 3);
+      // body
+      panel(g, 19, 8, 12, 34, RED, 3);
+      // nose
       g.fillStyle(INK, 1);
-      g.fillRect(40, 21, 6, 8);
+      g.fillRect(21, 2, 8, 6);
       g.fillStyle(YELLOW, 1);
-      g.fillRect(2, 22, 5, 6);
+      g.fillRect(22, 3, 6, 4);
+      // exhaust
+      g.fillStyle(YELLOW, 1);
+      g.fillRect(22, 42, 6, 5);
     });
 
     // The launcher: a red barrel on a white base, as the design draws it.
