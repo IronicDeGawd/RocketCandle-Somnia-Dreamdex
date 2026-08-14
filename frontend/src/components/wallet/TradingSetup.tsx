@@ -71,6 +71,7 @@ export default function TradingSetup({
   const [stopResting, setStopResting] = useState(false);
   const [buyBusy, setBuyBusy] = useState(false);
   const [buyError, setBuyError] = useState<string | null>(null);
+  const [vault, setVault] = useState<number | null>(null);
 
   /** How far the position may fall before it sells itself. */
   const FLOOR_DROP_PCT = 10;
@@ -144,6 +145,22 @@ export default function TradingSetup({
       setStopBusy(false);
     }
   }, [bridge]);
+
+  // What is actually in the vault, rather than what the stake field says.
+  // The withdraw button used to echo the stake, so it offered to withdraw 2
+  // USDso from a vault holding nothing.
+  useEffect(() => {
+    let cancelled = false;
+    if (!bridge || !authorized) return;
+
+    bridge.vaultUsdso().then((n) => {
+      if (!cancelled) setVault(n);
+    }).catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge, authorized, snapshot]);
 
   const handleEnable = useCallback(async () => {
     await enable(symbol, amount);
@@ -465,11 +482,20 @@ export default function TradingSetup({
 
                 <div className="ts-actions">
                   <button
-                    onClick={() => withdrawAll(symbol, amount)}
-                    disabled={busy}
+                    // Withdraw what is actually there, not what the stake
+                    // field happens to say - those differ the moment a
+                    // position is opened or a deposit fails.
+                    onClick={() =>
+                      withdrawAll(symbol, String(vault ?? 0))
+                    }
+                    disabled={busy || !vault}
                     className="rc-btn"
                   >
-                    Withdraw <span className="rc-mono">{amount}</span> USDso
+                    Withdraw{" "}
+                    <span className="rc-mono">
+                      {vault !== null ? vault.toFixed(2) : "…"}
+                    </span>{" "}
+                    USDso
                   </button>
                   <button
                     onClick={() => revoke(symbol)}

@@ -162,8 +162,43 @@ export function useSessionKey(): UseSessionKey {
         setSessionKey(key);
 
         const amount = parseUnits(usdsoAmount, meta.quoteDecimals);
-        const wait = (hash: `0x${string}`) =>
-          publicClient.waitForTransactionReceipt({ hash });
+
+        /*
+         * A mined transaction is not a successful one.
+         *
+         * A reverted call still produces a receipt, and this only awaited the
+         * receipt - so a deposit that reverted for want of balance sailed
+         * through and the panel announced "Trading is on" over an empty vault.
+         * The player then hit "Only 0.00 USDso available" at the buy-in, four
+         * signatures and a pile of gas later, with nothing having said why.
+         */
+        const wait = async (hash: `0x${string}`, what: string) => {
+          const receipt = await publicClient.waitForTransactionReceipt({ hash });
+          if (receipt.status !== "success") {
+            throw new Error(`${what} was rejected on chain`);
+          }
+          return receipt;
+        };
+
+        // Refuse before spending anything if the stake is not actually there.
+        // Cheaper to read a balance than to sign four transactions and fail on
+        // the third.
+        const walletBalance = (await publicClient.readContract({
+          address: USDSO_ADDRESS,
+          abi: ERC20_ABI,
+          functionName: "balanceOf",
+          args: [address],
+        })) as bigint;
+
+        if (walletBalance < amount) {
+          const held = Number(walletBalance) / 10 ** meta.quoteDecimals;
+          setStep("idle");
+          setError(
+            `This wallet holds ${held.toFixed(2)} USDso but the stake is ` +
+              `${usdsoAmount}. Lower the stake or top up.`
+          );
+          return;
+        }
 
         // 1. Fills have to settle to the vault rather than the wallet, or the
         //    session key would have nothing to trade against.
@@ -174,7 +209,8 @@ export function useSessionKey(): UseSessionKey {
             abi: SPOT_POOL_ABI,
             functionName: "setManualVaultMode",
             args: [true],
-          })
+          }),
+          "vault mode"
         );
 
         // 2. Allowance, but only if the pool does not already have enough.
@@ -193,7 +229,8 @@ export function useSessionKey(): UseSessionKey {
               abi: ERC20_ABI,
               functionName: "approve",
               args: [meta.pool, amount],
-            })
+            }),
+            "the USDso allowance"
           );
         }
 
@@ -205,7 +242,8 @@ export function useSessionKey(): UseSessionKey {
             abi: SPOT_POOL_ABI,
             functionName: "deposit",
             args: [USDSO_ADDRESS, amount],
-          })
+          }),
+          "the deposit"
         );
 
         // 4. Place and cancel only. Never withdraw.
@@ -221,7 +259,8 @@ export function useSessionKey(): UseSessionKey {
               [OPERATOR_SELECTORS.placeOrderFor, OPERATOR_SELECTORS.cancelOrderFor],
               true,
             ],
-          })
+          }),
+          "the key authorisation"
         );
 
         await refreshAuthorization(meta.pool, key.address);

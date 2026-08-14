@@ -1,7 +1,7 @@
 import type { WalletClient } from "viem";
 
-import type { MarketMeta } from "@/lib/dreamdex";
-import type { TradingClients } from "@/lib/orders";
+import { USDSO_ADDRESS, type MarketMeta } from "@/lib/dreamdex";
+import { readVaultBalance, type TradingClients } from "@/lib/orders";
 import {
   armStopLoss,
   cancelStop,
@@ -61,6 +61,8 @@ export interface TradingBridge {
    * value the snapshot reports rather than keeping a second copy.
    */
   isOpen: () => boolean;
+  /** USDso sitting in the exchange vault, ready to trade with. */
+  vaultUsdso: () => Promise<number>;
   /** Orders placed this run, and what they cost in fees. Always zero. */
   ordersPlaced: () => number;
   feesPaid: () => number;
@@ -171,6 +173,10 @@ export function buildTradingBridge({
 
     isOpen() {
       return Boolean(position);
+    },
+
+    async vaultUsdso() {
+      return readVaultBalance(clients, market, owner, USDSO_ADDRESS);
     },
 
     async open(stakeUsdso) {
