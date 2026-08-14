@@ -422,7 +422,9 @@ export default function GamePage() {
         */}
         <PhaserGame
           onGameComplete={handleGameComplete}
-          tradingSlot={<TradingSetup symbol={tradingSymbol} />}
+          tradingSlot={
+            <TradingSetup symbol={tradingSymbol} overlayUntilOpen />
+          }
         />
 
         <div className="gc-footer">

@@ -762,3 +762,17 @@
   background: var(--rc-red);
   flex: none;
 }
+
+/* Which chain this is. Red because it is a warning, not decoration: nothing
+   here is real money, and a player must never mistake it for mainnet. */
+.gc-status-chip--testnet {
+  background: var(--rc-ink);
+  border: 3px solid var(--rc-red);
+  box-shadow: var(--rc-shadow-low);
+  padding: 4px 9px;
+  color: var(--rc-red);
+}
+
+.gc-status-dot--red {
+  background: var(--rc-red);
+}

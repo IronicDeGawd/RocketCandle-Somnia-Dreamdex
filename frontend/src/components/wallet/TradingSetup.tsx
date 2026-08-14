@@ -35,9 +35,22 @@ const SETUP_STEPS: { key: string; label: string }[] = [
 
 export interface TradingSetupProps {
   symbol: string;
+  /**
+   * Lift the panel out over the game while it is still the way in.
+   *
+   * Buying in is how a run starts, so before a position exists this cannot be
+   * a box in a 212px side rail that a player has to go looking for. Once they
+   * are in the market it drops back into the rail, because from then on it is
+   * a readout to glance at rather than a step to take - and covering the game
+   * with it would be in the way.
+   */
+  overlayUntilOpen?: boolean;
 }
 
-export default function TradingSetup({ symbol }: TradingSetupProps) {
+export default function TradingSetup({
+  symbol,
+  overlayUntilOpen = false,
+}: TradingSetupProps) {
   const { sessionKey, authorized, step, error, enable, revoke, withdrawAll } =
     useSessionKey();
   const { bridge, snapshot, refresh } = useTradingSession(symbol);
@@ -187,8 +200,11 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
   const holdsSomethingReal = authorized || Boolean(snapshot?.open);
   const expanded = open || holdsSomethingReal;
 
-  return (
-    <section className="ts-root">
+  // Over the game until the player is actually in the market.
+  const asOverlay = overlayUntilOpen && !snapshot?.open;
+
+  const panel = (
+    <section className={`ts-root${asOverlay ? " ts-root--overlay" : ""}`}>
       <div className="rc-panel ts-toggle-row">
         <div className="ts-toggle-copy">
           <h2 className="rc-pixel ts-heading">Buy in to play</h2>
@@ -200,7 +216,9 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
                 : "Buying into this pair is how a run starts."}
           </p>
         </div>
-        {!holdsSomethingReal && (
+        {/* No collapse control while this is the overlay: folding the panel
+            away there would leave a stub over the game and no way into a run. */}
+        {!holdsSomethingReal && !asOverlay && (
           <button
             type="button"
             className="rc-btn rc-btn--primary"
@@ -473,5 +491,16 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
         </div>
       ) : null}
     </section>
+  );
+
+  if (!asOverlay) return panel;
+
+  return (
+    <div className="ts-overlay" role="dialog" aria-modal="false" aria-label="Buy in to play">
+      <div className="ts-overlay-inner">
+        <p className="rc-pixel ts-overlay-lead">BUY IN TO START A RUN</p>
+        {panel}
+      </div>
+    </div>
   );
 }

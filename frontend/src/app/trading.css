@@ -133,17 +133,27 @@
   color: var(--rc-text-soft);
 }
 
+/*
+ * Deliberately NOT a flex container.
+ *
+ * These items contain inline emphasis and mono spans, and in a flex parent each
+ * of those becomes its own flex item - so "can never withdraw your money"
+ * broke out into a second column beside the sentence it belongs to. The narrow
+ * side rail disguised it; the wider overlay made it obvious. The bullet is
+ * positioned instead, which keeps the text one continuous flow.
+ */
 .ts-facts li {
-  display: flex;
-  gap: 10px;
+  position: relative;
+  padding-left: 18px;
 }
 
 .ts-facts li::before {
   content: "";
-  flex: none;
+  position: absolute;
+  left: 0;
+  top: 6px;
   width: 8px;
   height: 8px;
-  margin-top: 5px;
   background: var(--rc-blue);
   border: 2px solid var(--rc-ink);
 }
@@ -199,11 +209,12 @@
 
 /* --- Ready / stop copy -------------------------------------------------- */
 
+/* Same reason as .ts-facts li: this sentence carries an inline mono span for
+   the key address, which a flex parent would tear into its own column. */
 .ts-ready {
   margin: 0;
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
+  position: relative;
+  padding-left: 20px;
   font-size: 14px;
   line-height: 1.6;
   color: var(--rc-text-soft);
@@ -211,10 +222,11 @@
 
 .ts-ready::before {
   content: "";
-  flex: none;
+  position: absolute;
+  left: 0;
+  top: 6px;
   width: 10px;
   height: 10px;
-  margin-top: 5px;
   background: var(--rc-blue);
   border: 2px solid var(--rc-ink);
 }
@@ -283,4 +295,52 @@
   .ts-toggle-row { padding: 12px; gap: 12px; }
   .ts-actions { flex-direction: column; }
   .ts-actions .rc-btn { min-width: 0; }
+}
+
+/* --- Buy-in overlay ------------------------------------------------------- */
+/*
+ * Before a position exists, this panel is the way into a run - so it sits over
+ * the game rather than in the 212px side rail, where the stake field, the four
+ * setup steps and the buy-in button were all crammed into a column too narrow
+ * to read and easy to miss entirely.
+ *
+ * Not a true modal: the page behind stays scrollable and the game keeps
+ * running, because a player should be able to read the menu and the market
+ * provenance while deciding. It stops covering anything the moment a position
+ * is open.
+ */
+
+.ts-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(20, 22, 26, 0.72);
+  overflow-y: auto;
+}
+
+.ts-overlay-inner {
+  width: 100%;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: auto;
+}
+
+.ts-overlay-lead {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--rc-yellow);
+  text-align: center;
+  text-shadow: 4px 4px 0 var(--rc-ink);
+}
+
+/* The panel keeps its own surfaces; it only stops being a rail-width column. */
+.ts-root--overlay {
+  width: 100%;
 }

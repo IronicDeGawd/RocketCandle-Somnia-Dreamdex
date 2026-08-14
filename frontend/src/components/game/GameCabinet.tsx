@@ -3,6 +3,7 @@
 import type { ReactNode, RefObject } from "react";
 
 import type { GameControls, GameHud as GameHudState } from "@/hooks/useGameHud";
+import { somniaNetwork } from "@/lib/wagmi";
 import GameHud from "./GameHud";
 import AimControls from "./AimControls";
 import MarketStrip from "./MarketStrip";
@@ -63,6 +64,14 @@ export default function GameCabinet({
               {isConnected ? shortAddress(address) : "WALLET OFFLINE"}
             </span>
           </span>
+          {/* Which chain the money is on. Read from the chain definition rather
+              than written here, so it cannot claim testnet on a mainnet build. */}
+          {somniaNetwork.testnet ? (
+            <span className="gc-status-chip gc-status-chip--testnet">
+              <span className="gc-status-dot gc-status-dot--red" />
+              TESTNET
+            </span>
+          ) : null}
         </div>
         <div className="gc-statusbar-right rc-mono">
           {hud.terrainCaption || "reading the market"}
