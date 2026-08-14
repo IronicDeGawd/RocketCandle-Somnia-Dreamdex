@@ -1,14 +1,44 @@
 import type { Metadata } from "next";
-import { Pixelify_Sans } from "next/font/google";
+import { Geist_Mono, Instrument_Sans, Press_Start_2P } from "next/font/google";
 import "./styles.css";
 import "./globals.css";
+// Last, so the new language wins over the stylesheets it is replacing.
+import "./design-system.css";
 import { Providers } from "./providers";
 import FloatingBackground from "@/components/ui/FloatingBackground";
 
-const pixelifySans = Pixelify_Sans({
+/**
+ * Three faces, each with one job.
+ *
+ * Self-hosted through the framework rather than fetched from a font CDN: it
+ * removes a third-party round trip from first paint, and the pixel face in
+ * particular has to be present before the first frame or every title reflows
+ * once it arrives.
+ */
+
+/** Titles, labels, buttons, score. A display face - never body copy. */
+const pressStart = Press_Start_2P({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--font-press-start",
+  display: "swap",
+  preload: true,
+});
+
+/** Prose. */
+const instrumentSans = Instrument_Sans({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
-  variable: "--font-pixelify-sans",
+  variable: "--font-instrument-sans",
+  display: "swap",
+  preload: true,
+});
+
+/** Data: amounts, addresses, timestamps - anything read down a column. */
+const geistMono = Geist_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-geist-mono",
   display: "swap",
   preload: true,
 });
@@ -75,10 +105,12 @@ export default function RootLayout({
         />
         <meta name="apple-mobile-web-app-title" content="Rocket Candle" />
         <meta name="application-name" content="Rocket Candle" />
-        <meta name="msapplication-TileColor" content="#1a1a2e" />
-        <meta name="theme-color" content="#1a1a2e" />
+        <meta name="msapplication-TileColor" content="#14161a" />
+        <meta name="theme-color" content="#2a2d34" />
       </head>
-      <body className={`${pixelifySans.variable}`}>
+      <body
+        className={`${pressStart.variable} ${instrumentSans.variable} ${geistMono.variable}`}
+      >
         <FloatingBackground />
         <Providers>{children}</Providers>
       </body>
