@@ -255,18 +255,24 @@ export default function TradingSetup({
    * kept moving, so from that point the toggle disappears.
    */
   const holdsSomethingReal = authorized || Boolean(snapshot?.open);
-
-  // Over the game until the player is actually in the market.
-  const asOverlay = overlayUntilOpen && !snapshot?.open;
+  const positionOpen = Boolean(snapshot?.open);
 
   /*
    * Once the player is in the market this stops being a form and becomes a
    * readout, so it folds down to a strip rather than holding a 212px rail
-   * open with an explainer of a step already taken. The full panel is one
-   * click away, because arming the floor still lives inside it.
+   * open with an explainer of a step already taken.
    */
-  const inTheMarket = Boolean(snapshot?.open) && !asOverlay;
+  const inTheMarket = positionOpen && overlayUntilOpen;
   const expanded = inTheMarket ? open : open || holdsSomethingReal;
+
+  /*
+   * Over the game whenever it is a thing to act on rather than glance at:
+   * before a position exists, and again whenever the player opens the folded
+   * panel back up. Reopening used to unfold it inside the 212px rail, where
+   * the controls it exists for are squeezed into a column too narrow to use -
+   * the same reason the buy-in was lifted out of the rail in the first place.
+   */
+  const asOverlay = overlayUntilOpen && (!positionOpen || expanded);
 
   useEffect(() => {
     if (snapshot?.open) setOpen(false);
@@ -289,7 +295,7 @@ export default function TradingSetup({
         </div>
         {/* No collapse control while this is the overlay: folding the panel
             away there would leave a stub over the game and no way into a run. */}
-        {(inTheMarket || !holdsSomethingReal) && !asOverlay && (
+        {(inTheMarket || (!holdsSomethingReal && !asOverlay)) && (
           <button
             type="button"
             className="rc-btn rc-btn--primary"
@@ -705,9 +711,16 @@ export default function TradingSetup({
   if (!asOverlay) return panel;
 
   return (
-    <div className="ts-overlay" role="dialog" aria-modal="false" aria-label="Buy in to play">
+    <div
+      className="ts-overlay"
+      role="dialog"
+      aria-modal="false"
+      aria-label={positionOpen ? "Your position" : "Set up trading to play"}
+    >
       <div className="ts-overlay-inner">
-        <p className="rc-pixel ts-overlay-lead">BUY IN TO START A RUN</p>
+        <p className="rc-pixel ts-overlay-lead">
+          {positionOpen ? "YOUR POSITION" : "FUND THE VAULT TO PLAY"}
+        </p>
         {panel}
       </div>
     </div>

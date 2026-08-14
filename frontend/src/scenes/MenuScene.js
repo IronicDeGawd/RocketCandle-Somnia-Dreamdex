@@ -49,9 +49,9 @@ export class MenuScene extends Phaser.Scene {
     });
 
     // Create title
-    this.createHardShadowText(600, 62, "ROCKET CANDLE", {
+    this.createHardShadowText(600, 56, "ROCKET CANDLE", {
       fontFamily: PIXEL_FONT,
-      fontSize: "28px",
+      fontSize: "38px",
       color: "#F6F740",
     });
 
@@ -66,27 +66,27 @@ export class MenuScene extends Phaser.Scene {
     // Create play button
     this.playButton = this.createPixelButton(
       600,
-      436,
-      260,
-      66,
+      466,
+      420,
+      82,
       "PLAY GAME",
-      { fill: YELLOW, textColor: "#14161A", fontSize: "16px" },
+      { fill: YELLOW, textColor: "#14161A", fontSize: "22px" },
       () => this.startGame()
     );
 
     // Create instructions
     this.add
-      .text(600, 508, "AIM WITH SLIDERS · LAUNCH TO FIRE", {
+      .text(600, 538, "AIM WITH SLIDERS · LAUNCH TO FIRE", {
         fontFamily: PIXEL_FONT,
-        fontSize: "10px",
+        fontSize: "12px",
         color: "rgba(255,255,255,0.55)",
       })
       .setOrigin(0.5);
 
     this.add
-      .text(600, 534, "LIMITED ATTEMPTS PER LEVEL", {
+      .text(600, 566, "LIMITED ATTEMPTS PER LEVEL", {
         fontFamily: PIXEL_FONT,
-        fontSize: "10px",
+        fontSize: "12px",
         color: "#E94F37",
       })
       .setOrigin(0.5);
@@ -228,23 +228,23 @@ export class MenuScene extends Phaser.Scene {
    */
   createMarketPicker() {
     this.add
-      .text(600, 162, "CHOOSE YOUR MARKET", {
+      .text(600, 150, "CHOOSE YOUR MARKET", {
         fontFamily: PIXEL_FONT,
-        fontSize: "12px",
+        fontSize: "15px",
         color: "#3F88C5",
       })
       .setOrigin(0.5);
 
     // The four chips wrap into a 2x2 grid rather than a single row fixed at
     // 220px spacing, so they always stay inside the 1200px stage.
-    const chipWidth = 340;
-    const chipHeight = 56;
-    const gapX = 20;
-    const gapY = 16;
+    const chipWidth = 520;
+    const chipHeight = 74;
+    const gapX = 40;
+    const gapY = 18;
     const columns = 2;
     const gridWidth = columns * chipWidth + (columns - 1) * gapX;
     const startX = 600 - gridWidth / 2 + chipWidth / 2;
-    const rowY = [206, 206 + chipHeight + gapY];
+    const rowY = [200, 200 + chipHeight + gapY];
 
     this.marketChips = [];
 
@@ -270,17 +270,17 @@ export class MenuScene extends Phaser.Scene {
         .on("pointerdown", () => this.selectMarket(market.id));
 
       const label = this.add
-        .text(x, y - 12, market.label, {
+        .text(x, y - 16, market.label, {
           fontFamily: PIXEL_FONT,
-          fontSize: "13px",
+          fontSize: "17px",
           color: "#FFFFFF",
         })
         .setOrigin(0.5);
 
       const blurb = this.add
-        .text(x, y + 14, market.blurb, {
+        .text(x, y + 18, market.blurb, {
           fontFamily: MONO_FONT,
-          fontSize: "10px",
+          fontSize: "13px",
           color: "rgba(255,255,255,0.55)",
           wordWrap: { width: chipWidth - 30 },
           align: "center",
@@ -294,8 +294,8 @@ export class MenuScene extends Phaser.Scene {
     // so it gets its own bordered panel and the mono face, in blue.
     // Clear of the second chip row, which ends at y=280. At 300 the panel
     // started at 273 and sat on top of the Ether and Bitcoin chips.
-    const panelY = 350;
-    const panelHeight = 54;
+    const panelY = 372;
+    const panelHeight = 60;
 
     this.add.rectangle(
       600 + SHADOW_OFFSET,
@@ -311,7 +311,7 @@ export class MenuScene extends Phaser.Scene {
     this.marketStatusText = this.add
       .text(600, panelY, "", {
         fontFamily: MONO_FONT,
-        fontSize: "14px",
+        fontSize: "16px",
         color: "#3F88C5",
         wordWrap: { width: gridWidth - 40 },
         align: "center",
@@ -591,7 +591,7 @@ export class MenuScene extends Phaser.Scene {
    * Display player stats from blockchain asynchronously
    */
   async displayPlayerStats() {
-    const statsY = 108;
+    const statsY = 104;
 
     try {
       if (!window.web3Service || !window.walletManager?.isConnected) {
