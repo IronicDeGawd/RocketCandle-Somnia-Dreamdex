@@ -29,6 +29,14 @@ interface AppContextType {
   playerStats: PlayerStats | null;
   walletAddress: string | null;
   connectWallet: () => Promise<void>;
+  /**
+   * Why the last connection attempt failed, or null if nothing has failed.
+   *
+   * A wallet refusing is an ordinary outcome, not an exception - people dismiss
+   * the prompt all the time. Previously it was only written to the console, so
+   * the page sat there with no explanation and no way to retry.
+   */
+  connectError: string | null;
   signOut: () => void;
   refreshPlayerStats: () => Promise<void>;
   setWalletAddress: (address: string | null) => void;
@@ -43,6 +51,7 @@ const AppContext = createContext<AppContextType>({
   playerStats: null,
   walletAddress: null,
   connectWallet: async () => {},
+  connectError: null,
   signOut: () => {},
   refreshPlayerStats: async () => {},
   setWalletAddress: () => {},
@@ -54,13 +63,18 @@ const queryClient = new QueryClient();
 
 function InnerProviders({ children }: { children: ReactNode }) {
   const { address: wagmiAddress, isConnected } = useAccount();
-  const { connect, connectors } = useConnect();
+  const { connect, connectors, error: connectFailure } = useConnect();
   const { disconnect } = useDisconnect();
 
   const contractAddress = getGameContractAddress();
 
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // Only failures raised before a wallet is even reached. Anything the wallet
+  // itself rejects surfaces through wagmi instead; the two are merged below.
+  const [localConnectError, setLocalConnectError] = useState<string | null>(
+    null
+  );
   const [gameContract] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [playerStats, setPlayerStats] = useState<PlayerStats | null>(null);
@@ -157,6 +171,7 @@ function InnerProviders({ children }: { children: ReactNode }) {
 
   const connectWallet = useCallback(async () => {
     try {
+      setLocalConnectError(null);
       if (!isLoading) setIsLoading(true);
 
       // Try to connect using wagmi first
@@ -171,6 +186,9 @@ function InnerProviders({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("Failed to connect wallet:", error);
+      setLocalConnectError(
+        error instanceof Error ? error.message : "Could not reach a wallet"
+      );
     } finally {
       if (isLoading) setIsLoading(false);
     }
@@ -197,6 +215,11 @@ function InnerProviders({ children }: { children: ReactNode }) {
     playerStats,
     walletAddress,
     connectWallet,
+    // A live connection clears any earlier failure, so a successful retry does
+    // not leave the previous refusal on screen.
+    connectError: isConnected
+      ? null
+      : localConnectError ?? connectFailure?.message ?? null,
     signOut,
     refreshPlayerStats,
     setWalletAddress,

@@ -1,0 +1,441 @@
+/* ===========================================================================
+   Rocket Candle — landing page
+   ---------------------------------------------------------------------------
+   Layout and landing-only styling on top of design-system.css. Nothing here
+   redefines colour, border or shadow tokens — it only arranges the primitives
+   from design-system.css (.rc-panel, .rc-btn, .rc-pixel, .rc-mono …) into the
+   landing page's sections.
+   =========================================================================== */
+
+.lp-page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 40px 32px 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+/* A visually hidden heading — present for the page outline and screen
+   readers, absent from the visual design the mock specifies. */
+.lp-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.lp-accent-yellow { color: var(--rc-yellow); }
+
+/* ---------------------------------------------------------------------------
+   The console — one bordered, shadowed frame holding hero, the three-up
+   feature strip and the how-to-play panel, divided by ink rules rather than
+   separate shadows.
+   --------------------------------------------------------------------------- */
+
+.lp-console {
+  border: var(--rc-border);
+  box-shadow: var(--rc-shadow);
+  background: var(--rc-surface);
+}
+
+.lp-console > * + * {
+  border-top: var(--rc-border);
+}
+
+/* --- Hero ----------------------------------------------------------------- */
+
+.lp-hero {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.lp-hero-content {
+  padding: 56px 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  justify-content: center;
+}
+
+.lp-hero-title {
+  font-size: 30px;
+  max-width: 480px;
+}
+
+.lp-hero-copy {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--rc-text-soft);
+  max-width: 430px;
+  text-wrap: pretty;
+}
+
+.lp-hero-art {
+  border-left: var(--rc-border);
+  background: var(--rc-well);
+  padding: 28px;
+  display: flex;
+  align-items: center;
+}
+
+.lp-cta { display: flex; flex-direction: column; gap: 16px; }
+
+.lp-cta-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.lp-cta-note {
+  font-size: 13px;
+  color: var(--rc-text-faint);
+}
+
+.lp-connecting { color: var(--rc-blue); }
+
+/* A refusal states itself in red, at the same size as the note it replaces, so
+   the block does not change height when a connection fails. */
+.lp-cta-note--failed {
+  color: var(--rc-red);
+}
+
+/* The retry lives inside the sentence rather than as another button in the row.
+   Underlined rather than boxed, so it reads as part of the line it sits in. */
+.lp-cta-retry {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: var(--rc-yellow);
+  border-bottom: 2px solid var(--rc-yellow);
+  cursor: pointer;
+  letter-spacing: 0.06em;
+}
+
+.lp-cta-retry:hover {
+  color: var(--rc-white);
+  border-bottom-color: var(--rc-white);
+}
+
+.lp-cta-retry:focus-visible {
+  outline: 3px solid var(--rc-yellow);
+  outline-offset: 3px;
+}
+
+/* --- Hero preview illustration -------------------------------------------- */
+
+.lp-preview {
+  position: relative;
+  width: 100%;
+  height: 300px;
+  background: var(--rc-base);
+  border: var(--rc-border);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 3px rgba(63, 136, 197, 0.25);
+}
+
+.lp-preview-ground {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 16px;
+  background: var(--rc-blue);
+  background-image: linear-gradient(
+    90deg,
+    var(--rc-ink) 0 8px,
+    transparent 8px 16px
+  );
+  background-size: 16px 16px;
+}
+
+.lp-preview-rocket {
+  position: absolute;
+  left: 24px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.lp-preview-rocket-fin {
+  width: 36px;
+  height: 14px;
+  background: var(--rc-red);
+  border: var(--rc-border-thin);
+  transform: rotate(-38deg);
+  transform-origin: left bottom;
+  margin-left: 14px;
+}
+
+.lp-preview-rocket-body {
+  width: 30px;
+  height: 14px;
+  background: var(--rc-white);
+  border: var(--rc-border-thin);
+}
+
+.lp-preview-trail {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: var(--rc-yellow);
+}
+
+.lp-preview-candles {
+  position: absolute;
+  right: 26px;
+  bottom: 16px;
+  display: flex;
+  align-items: flex-end;
+  gap: 22px;
+}
+
+.lp-preview-candle-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.lp-preview-enemy {
+  width: 30px;
+  height: 22px;
+  background: var(--rc-red);
+  border: var(--rc-border-thin);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.lp-preview-enemy span {
+  width: 4px;
+  height: 4px;
+  background: var(--rc-ink);
+}
+
+.lp-preview-cap {
+  width: 30px;
+  height: 22px;
+  background: var(--rc-white);
+  border: var(--rc-border-thin);
+}
+
+.lp-preview-body {
+  width: 34px;
+  border: var(--rc-border-thin);
+}
+
+.lp-preview-body--yellow { background: var(--rc-yellow); }
+.lp-preview-body--blue { background: var(--rc-blue); }
+
+.lp-preview-hud {
+  position: absolute;
+  top: 16px;
+  font-size: 9px;
+}
+
+.lp-preview-hud--score { left: 20px; color: var(--rc-yellow); }
+.lp-preview-hud--enemies { right: 20px; color: var(--rc-red); }
+
+/* --- Features (three-up strip) --------------------------------------------- */
+
+.lp-features {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.lp-feature-col {
+  padding: 32px 34px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lp-feature-col + .lp-feature-col {
+  border-left: var(--rc-border);
+}
+
+.lp-feature-num { font-size: 18px; }
+.lp-feature-num--red { color: var(--rc-red); }
+.lp-feature-num--yellow { color: var(--rc-yellow); }
+.lp-feature-num--blue { color: var(--rc-blue); }
+
+.lp-feature-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.lp-feature-copy {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--rc-text-faint);
+}
+
+/* --- How to play ------------------------------------------------------------ */
+
+.lp-htp {
+  padding: 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  background: var(--rc-well);
+}
+
+.lp-htp-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.lp-htp-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.lp-htp-card-head {
+  margin: 0;
+  font-weight: 400;
+}
+
+.lp-htp-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.lp-key-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lp-key {
+  font-size: 10px;
+  border: var(--rc-border-thin);
+  background: var(--rc-base);
+  box-shadow: var(--rc-shadow-low);
+  padding: 7px 9px;
+  color: var(--rc-text);
+}
+
+.lp-key--wide { padding: 7px 22px; }
+
+.lp-key--drag {
+  background: var(--rc-blue);
+  color: var(--rc-ink);
+  padding: 7px 12px;
+}
+
+.lp-key-label {
+  font-size: 14px;
+  color: var(--rc-text-faint);
+}
+
+.lp-score-body { gap: 12px; }
+
+.lp-score-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.lp-score-row--miss {
+  border-top: var(--rc-border-thin);
+  padding-top: 12px;
+}
+
+.lp-score-label { color: var(--rc-text-faint); }
+.lp-gain { color: var(--rc-yellow); }
+.lp-loss { color: var(--rc-red); }
+
+.lp-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.lp-mode--soon { opacity: 0.45; }
+
+.lp-mode-head {
+  font-size: 10px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  color: var(--rc-yellow);
+}
+
+.lp-mode--soon .lp-mode-head { color: var(--rc-text); }
+
+.lp-soon {
+  border: 2px solid var(--rc-white);
+  padding: 3px 5px;
+  font-size: 8px;
+}
+
+.lp-mode-copy {
+  margin: 0;
+  font-size: 14px;
+  color: var(--rc-text-faint);
+  line-height: 1.5;
+}
+
+/* --- Footer ----------------------------------------------------------------- */
+
+.lp-footer {
+  padding-top: 32px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--rc-text-faint);
+  border-top: var(--rc-border-thin);
+}
+
+/* ---------------------------------------------------------------------------
+   Responsive
+   --------------------------------------------------------------------------- */
+
+@media (max-width: 1024px) {
+  .lp-hero { grid-template-columns: 1fr; }
+  .lp-hero-art { border-left: none; border-top: var(--rc-border); }
+  .lp-htp-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 768px) {
+  .lp-page { padding: 28px 20px 72px; gap: 24px; }
+  .lp-hero-content { padding: 40px 28px; }
+  .lp-hero-title { font-size: 24px; }
+  .lp-features { grid-template-columns: 1fr; }
+  .lp-feature-col + .lp-feature-col {
+    border-left: none;
+    border-top: var(--rc-border);
+  }
+  .lp-htp { padding: 32px 24px; }
+  .lp-htp-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 480px) {
+  .lp-page { padding: 20px 14px 56px; }
+  .lp-hero-content { padding: 28px 18px; gap: 20px; }
+  .lp-hero-title { font-size: 19px; }
+  .lp-hero-copy { font-size: 15px; }
+  .lp-hero-art { padding: 16px; }
+  .lp-preview { height: 220px; }
+  .lp-cta-row { gap: 10px; }
+  .lp-feature-col { padding: 24px 20px; }
+  .lp-htp { padding: 24px 16px; }
+}

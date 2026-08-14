@@ -5,6 +5,7 @@ import HeroSection from "@/components/landing/HeroSection";
 import FeaturesSection from "@/components/landing/FeaturesSection";
 import HowToPlaySection from "@/components/landing/HowToPlaySection";
 import Navbar from "@/components/layout/Navbar";
+import "./landing.css";
 
 export default function LandingPage() {
   const router = useRouter();
@@ -36,42 +37,34 @@ export default function LandingPage() {
     <>
       {/* Navigation Bar */}
       <Navbar onNavigate={handleNavigation} />
-      
-      {/* Main content container with navbar padding */}
-      <div className="landing-container pt-20">
-        {/* Hero Section with integrated CTA */}
-        <HeroSection 
-          onDashboard={handleDashboard}
-          onStartGame={handleStartGame}
-        />
 
-        {/* Content Section */}
-        <section className="content-section">
-          {/* Features Section */}
+      <div className="lp-page pt-20">
+        {/* Hero, feature strip and how-to-play, framed as one console */}
+        <div className="lp-console">
+          <HeroSection
+            onDashboard={handleDashboard}
+            onStartGame={handleStartGame}
+          />
           <FeaturesSection />
-
-          {/* How to Play Section */}
           <HowToPlaySection />
-        </section>
+        </div>
 
         {/* Footer with Credits */}
-        <footer className="py-8 text-center text-sm text-gray-400 border-t border-gray-800/50 mt-16">
+        <footer className="lp-footer rc-mono">
           <p>
             Sound Effect by{" "}
-            <a 
+            <a
               href="https://pixabay.com/users/freesound_community-46691455/?utm_source=link-attribution&utm_medium=referral&utm_campaign=music&utm_content=38511"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-400 hover:text-blue-300 transition-colors"
             >
               freesound_community
             </a>{" "}
             from{" "}
-            <a 
+            <a
               href="https://pixabay.com/sound-effects//?utm_source=link-attribution&utm_medium=referral&utm_campaign=music&utm_content=38511"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-400 hover:text-blue-300 transition-colors"
             >
               Pixabay
             </a>
@@ -81,4 +74,3 @@ export default function LandingPage() {
     </>
   );
 }
-
