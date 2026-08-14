@@ -1,0 +1,243 @@
+/* ===========================================================================
+   Rocket Candle — navigation
+   ---------------------------------------------------------------------------
+   Layout only, on top of design-system.css. Class names are prefixed nb- so
+   they never collide with the old .navbar rules still sitting in styles.css.
+   =========================================================================== */
+
+.nb-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: var(--rc-surface);
+  border-bottom: var(--rc-border);
+}
+
+.nb-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+/* --- Brand ----------------------------------------------------------------- */
+
+.nb-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.nb-brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.nb-brand-title {
+  font-size: 11px;
+  color: var(--rc-white);
+  white-space: nowrap;
+}
+
+.nb-brand-sub {
+  font-size: 10px;
+  color: var(--rc-text-faint);
+  white-space: nowrap;
+}
+
+/* --- Desktop links ----------------------------------------------------------- */
+
+.nb-links {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.nb-link {
+  background: none;
+  border: none;
+  padding: 10px 12px;
+  font-size: 10px;
+  color: var(--rc-text-soft);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+}
+
+.nb-link:hover:not(:disabled) {
+  color: var(--rc-white);
+  border-bottom-color: var(--rc-yellow);
+}
+
+.nb-link:focus-visible {
+  outline: 3px solid var(--rc-yellow);
+  outline-offset: 2px;
+}
+
+.nb-link:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* --- Actions ------------------------------------------------------------------ */
+
+.nb-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nb-connect-btn {
+  font-size: 10px;
+  padding: 10px 16px;
+}
+
+.nb-wallet {
+  position: relative;
+}
+
+.nb-wallet-trigger {
+  padding: 8px 12px;
+  gap: 10px;
+}
+
+.nb-status-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--rc-yellow);
+  border: 2px solid var(--rc-ink);
+  flex-shrink: 0;
+}
+
+.nb-wallet-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.nb-wallet-name {
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.nb-wallet-address {
+  font-size: 10px;
+  color: var(--rc-text-faint);
+  letter-spacing: 0.04em;
+}
+
+.nb-caret {
+  font-size: 8px;
+}
+
+.nb-dropdown {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  width: 220px;
+  padding: 12px;
+  gap: 12px;
+  z-index: 110;
+}
+
+.nb-dropdown-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nb-stat-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--rc-text-soft);
+}
+
+.nb-disconnect-btn {
+  width: 100%;
+  font-size: 10px;
+}
+
+/* --- Hamburger ------------------------------------------------------------------ */
+
+.nb-burger {
+  display: none;
+  padding: 10px;
+  box-shadow: var(--rc-shadow-low);
+}
+
+.nb-burger-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 18px;
+}
+
+.nb-burger-bars span {
+  display: block;
+  height: 2px;
+  background: var(--rc-white);
+}
+
+/* --- Mobile menu ------------------------------------------------------------------ */
+
+.nb-mobile {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  padding: 16px;
+  gap: 10px;
+  z-index: 110;
+}
+
+.nb-mobile-link {
+  background: var(--rc-well);
+  border: var(--rc-border-thin);
+  text-align: left;
+  padding: 14px 14px;
+  font-size: 10px;
+  color: var(--rc-white);
+  cursor: pointer;
+}
+
+.nb-mobile-link:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.nb-mobile-link:focus-visible {
+  outline: 3px solid var(--rc-yellow);
+  outline-offset: 2px;
+}
+
+.nb-mobile-stats {
+  margin: 4px 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Responsive
+   --------------------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .nb-links { display: none; }
+  .nb-burger { display: inline-flex; }
+  .nb-wallet-info { display: none; }
+  .nb-wallet-trigger { padding: 10px; }
+}
+
+@media (max-width: 480px) {
+  .nb-inner { padding: 0 14px; height: 64px; }
+  .nb-brand-sub { display: none; }
+  .nb-connect-btn { font-size: 9px; padding: 9px 12px; }
+  .nb-dropdown { width: min(260px, calc(100vw - 28px)); }
+}

@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from "@/app/providers";
 import SomniaLogo from "../ui/SomniaLogo";
+import "./navbar.css";
 
 interface NavbarProps {
   onNavigate?: (page: 'home' | 'game' | 'leaderboard') => void;
@@ -10,13 +11,24 @@ interface NavbarProps {
 
 const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
   const { connectWallet, signOut, isLoading, isAuthenticated, user, playerStats } = useApp();
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  // The wallet dropdown and the mobile hamburger menu used to share one
+  // boolean, so opening either one closed the other - a phone user could
+  // never see both the nav links and their wallet stats at once. Two
+  // independent switches let them open on their own.
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
+  const dropdownPanelRef = useRef<HTMLDivElement>(null);
+  const mobileTriggerRef = useRef<HTMLButtonElement>(null);
+  const mobilePanelRef = useRef<HTMLDivElement>(null);
 
   const handleNavigation = (page: 'home' | 'game' | 'leaderboard') => {
     if (onNavigate) {
       onNavigate(page);
     }
-    setIsMenuOpen(false);
+    setIsMobileMenuOpen(false);
   };
 
   const formatAddress = (address: string) => {
@@ -24,175 +36,199 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
+  // Opening either panel moves focus into it; Escape closes it and hands
+  // focus back to the button that opened it, so a keyboard user is never
+  // dropped onto the page behind an invisible panel.
+  useEffect(() => {
+    if (!isDropdownOpen) return;
+    const panel = dropdownPanelRef.current;
+    const focusable = panel?.querySelector<HTMLElement>('button, a');
+    focusable?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsDropdownOpen(false);
+        dropdownTriggerRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isDropdownOpen]);
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    const panel = mobilePanelRef.current;
+    const focusable = panel?.querySelector<HTMLElement>('button, a');
+    focusable?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsMobileMenuOpen(false);
+        mobileTriggerRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isMobileMenuOpen]);
+
   return (
-    <nav className="navbar">
-      <div className="navbar-container">
-        {/* Left Side - Logo and Title */}
-        <div className="navbar-brand">
-          <SomniaLogo size="small" className="navbar-logo" animate={false} />
-          <div className="navbar-title">
-            <span className="navbar-title-main">Rocket Candle</span>
-            <span className="navbar-subtitle">Somnia Blockchain</span>
+    <nav className="nb-bar">
+      <div className="nb-inner">
+        <div className="nb-brand">
+          <SomniaLogo size="small" animate={false} />
+          <div className="nb-brand-text">
+            <span className="nb-brand-title rc-pixel">ROCKET CANDLE</span>
+            <span className="nb-brand-sub rc-mono">SOMNIA BLOCKCHAIN</span>
           </div>
         </div>
 
-        {/* Center - Navigation Links */}
-        <div className="navbar-nav">
-          <button
-            onClick={() => handleNavigation('home')}
-            className="nav-link"
-          >
-            🏠 Home
+        <div className="nb-links">
+          <button onClick={() => handleNavigation('home')} className="nb-link rc-pixel">
+            HOME
           </button>
           <button
             onClick={() => handleNavigation('game')}
-            className="nav-link"
+            className="nb-link rc-pixel"
             disabled={!isAuthenticated}
+            title={!isAuthenticated ? 'Connect a wallet to play' : undefined}
           >
-            🎮 Play
+            PLAY
           </button>
-          <button
-            onClick={() => handleNavigation('leaderboard')}
-            className="nav-link"
-          >
-            🏆 Leaderboard
+          <button onClick={() => handleNavigation('leaderboard')} className="nb-link rc-pixel">
+            LEADERBOARD
           </button>
         </div>
 
-        {/* Right Side - Wallet Connection */}
-        <div className="navbar-wallet">
+        <div className="nb-actions">
           {!isAuthenticated ? (
             <button
               onClick={connectWallet}
               disabled={isLoading}
-              className="btn btn-primary"
+              className="rc-btn rc-btn--primary nb-connect-btn"
             >
-              {isLoading ? (
-                <span className="flex items-center gap-2">
-                  <div className="loading-spinner-small"></div>
-                  Connecting...
-                </span>
-              ) : (
-                "🔗 Connect"
-              )}
+              {isLoading ? 'CONNECTING…' : 'CONNECT'}
             </button>
           ) : (
-            <div className="wallet-connected">
-              <div className="wallet-info-dropdown">
-                <button
-                  onClick={() => setIsMenuOpen(!isMenuOpen)}
-                  className="wallet-button"
-                >
-                  <div className="wallet-avatar">
-                    <div className="status-indicator"></div>
-                  </div>
-                  <div className="wallet-details">
-                    <div className="wallet-name">{user?.displayName || 'Player'}</div>
-                    <div className="wallet-address">{formatAddress(user?.address || '')}</div>
-                  </div>
-                  <div className="dropdown-arrow">
-                    {isMenuOpen ? '▲' : '▼'}
-                  </div>
-                </button>
+            <div className="nb-wallet">
+              <button
+                ref={dropdownTriggerRef}
+                onClick={() => setIsDropdownOpen((open) => !open)}
+                className="rc-btn nb-wallet-trigger"
+                aria-haspopup="true"
+                aria-expanded={isDropdownOpen}
+                aria-controls="nb-wallet-dropdown"
+              >
+                <span className="nb-status-dot" aria-hidden="true" />
+                <span className="nb-wallet-info">
+                  <span className="nb-wallet-name">{user?.displayName || 'Player'}</span>
+                  <span className="nb-wallet-address rc-mono">
+                    {formatAddress(user?.address || '')}
+                  </span>
+                </span>
+                <span className="nb-caret" aria-hidden="true">
+                  {isDropdownOpen ? '▲' : '▼'}
+                </span>
+              </button>
 
-                {isMenuOpen && (
-                  <div className="wallet-dropdown">
-                    {playerStats && (
-                      <div className="wallet-stats">
-                        <div className="stat-row">
-                          <span>Games:</span>
-                          <span>{playerStats.totalGames}</span>
-                        </div>
-                        <div className="stat-row">
-                          <span>Best Score:</span>
-                          <span>{playerStats.bestScore.toLocaleString()}</span>
-                        </div>
-                        <div className="stat-row">
-                          <span>WICK:</span>
-                          <span>{playerStats.totalTokens.toFixed(2)}</span>
-                        </div>
+              {isDropdownOpen && (
+                <div
+                  id="nb-wallet-dropdown"
+                  ref={dropdownPanelRef}
+                  className="rc-panel nb-dropdown"
+                  role="menu"
+                >
+                  {playerStats && (
+                    <div className="nb-dropdown-stats rc-well">
+                      <div className="nb-stat-row rc-mono">
+                        <span>GAMES</span>
+                        <span>{playerStats.totalGames}</span>
                       </div>
-                    )}
-                    <div className="dropdown-divider"></div>
-                    <button
-                      onClick={() => {
-                        signOut();
-                        setIsMenuOpen(false);
-                      }}
-                      className="disconnect-button"
-                    >
-                      🔌 Disconnect
-                    </button>
-                  </div>
-                )}
-              </div>
+                      <div className="nb-stat-row rc-mono">
+                        <span>BEST SCORE</span>
+                        <span>{playerStats.bestScore.toLocaleString()}</span>
+                      </div>
+                      <div className="nb-stat-row rc-mono">
+                        <span>WICK</span>
+                        <span>{playerStats.totalTokens.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => {
+                      signOut();
+                      setIsDropdownOpen(false);
+                    }}
+                    className="rc-btn rc-btn--danger nb-disconnect-btn"
+                  >
+                    DISCONNECT
+                  </button>
+                </div>
+              )}
             </div>
           )}
-        </div>
 
-        {/* Mobile Menu Toggle */}
-        <button
-          onClick={() => setIsMenuOpen(!isMenuOpen)}
-          className="mobile-menu-toggle"
-        >
-          <div className="hamburger">
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
-        </button>
+          <button
+            ref={mobileTriggerRef}
+            onClick={() => setIsMobileMenuOpen((open) => !open)}
+            className="nb-burger rc-btn"
+            aria-haspopup="true"
+            aria-expanded={isMobileMenuOpen}
+            aria-controls="nb-mobile-menu"
+            aria-label="Menu"
+          >
+            <span className="nb-burger-bars" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+          </button>
+        </div>
       </div>
 
-      {/* Mobile Menu */}
-      {isMenuOpen && (
-        <div className="mobile-menu">
-          <div className="mobile-nav-links">
-            <button
-              onClick={() => handleNavigation('home')}
-              className="mobile-nav-link"
-            >
-              🏠 Home
-            </button>
-            <button
-              onClick={() => handleNavigation('game')}
-              className="mobile-nav-link"
-              disabled={!isAuthenticated}
-            >
-              🎮 Play
-            </button>
-            <button
-              onClick={() => handleNavigation('leaderboard')}
-              className="mobile-nav-link"
-            >
-              🏆 Leaderboard
-            </button>
-          </div>
-          
+      {isMobileMenuOpen && (
+        <div id="nb-mobile-menu" ref={mobilePanelRef} className="rc-panel nb-mobile">
+          <button onClick={() => handleNavigation('home')} className="nb-mobile-link rc-pixel">
+            HOME
+          </button>
+          <button
+            onClick={() => handleNavigation('game')}
+            className="nb-mobile-link rc-pixel"
+            disabled={!isAuthenticated}
+          >
+            PLAY
+          </button>
+          <button onClick={() => handleNavigation('leaderboard')} className="nb-mobile-link rc-pixel">
+            LEADERBOARD
+          </button>
+
           {isAuthenticated && (
-            <div className="mobile-wallet-info">
+            <>
               {playerStats && (
-                <div className="mobile-stats">
-                  <div className="mobile-stat">
-                    <span>Games: {playerStats.totalGames}</span>
+                <div className="nb-dropdown-stats rc-well nb-mobile-stats">
+                  <div className="nb-stat-row rc-mono">
+                    <span>GAMES</span>
+                    <span>{playerStats.totalGames}</span>
                   </div>
-                  <div className="mobile-stat">
-                    <span>Best: {playerStats.bestScore.toLocaleString()}</span>
+                  <div className="nb-stat-row rc-mono">
+                    <span>BEST SCORE</span>
+                    <span>{playerStats.bestScore.toLocaleString()}</span>
                   </div>
-                  <div className="mobile-stat">
-                    <span>Tokens: {playerStats.totalTokens.toFixed(2)}</span>
+                  <div className="nb-stat-row rc-mono">
+                    <span>WICK</span>
+                    <span>{playerStats.totalTokens.toFixed(2)}</span>
                   </div>
                 </div>
               )}
               <button
                 onClick={() => {
                   signOut();
-                  setIsMenuOpen(false);
+                  setIsMobileMenuOpen(false);
                 }}
-                className="mobile-disconnect"
+                className="rc-btn rc-btn--danger nb-disconnect-btn"
               >
-                🔌 Disconnect Wallet
+                DISCONNECT
               </button>
-            </div>
+            </>
           )}
         </div>
       )}

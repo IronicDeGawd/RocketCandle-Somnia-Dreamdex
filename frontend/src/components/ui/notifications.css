@@ -1,0 +1,126 @@
+/* ===========================================================================
+   Rocket Candle — toasts
+   ---------------------------------------------------------------------------
+   Console-language stand-ins for the old glassy notification cards. Same
+   mount point, same auto-dismiss timing, same 300ms exit - just drawn as ink-
+   bordered panels instead of blurred glass.
+   =========================================================================== */
+
+.rc-toast-stack {
+  position: fixed;
+  top: 96px;
+  right: 20px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(360px, calc(100vw - 40px));
+  pointer-events: none;
+}
+
+.rc-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  background: var(--rc-surface);
+  border: var(--rc-border);
+  box-shadow: var(--rc-shadow-mid);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateX(24px);
+  transition: opacity 300ms steps(4, end), transform 300ms steps(4, end);
+}
+
+.rc-toast--visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.rc-toast--removing {
+  opacity: 0;
+  transform: translateX(24px);
+}
+
+.rc-toast-icon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  border: var(--rc-border-thin);
+  background: var(--rc-well);
+  color: var(--rc-white);
+}
+
+.rc-toast-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rc-toast-title {
+  font-size: 9px;
+  letter-spacing: 0.03em;
+}
+
+.rc-toast-text {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--rc-text-soft);
+  word-break: break-word;
+}
+
+.rc-toast-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--rc-text-faint);
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px;
+  cursor: pointer;
+}
+
+.rc-toast-close:hover {
+  color: var(--rc-white);
+}
+
+.rc-toast-close:focus-visible {
+  outline: 3px solid var(--rc-yellow);
+  outline-offset: 2px;
+}
+
+.rc-toast--success .rc-toast-icon { background: var(--rc-yellow); color: var(--rc-ink); border-color: var(--rc-ink); }
+.rc-toast--error .rc-toast-icon { background: var(--rc-red); color: var(--rc-white); border-color: var(--rc-ink); }
+.rc-toast--warning .rc-toast-icon { background: var(--rc-red); color: var(--rc-white); border-color: var(--rc-ink); }
+.rc-toast--info .rc-toast-icon { background: var(--rc-blue); color: var(--rc-ink); border-color: var(--rc-ink); }
+
+.rc-toast--error { border-color: var(--rc-red); }
+
+.rc-toast-overflow {
+  align-self: flex-end;
+  padding: 6px 10px;
+  background: var(--rc-well);
+  border: var(--rc-border-thin);
+  color: var(--rc-text-faint);
+  font-size: 11px;
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rc-toast { transition: none; }
+}
+
+@media (max-width: 480px) {
+  .rc-toast-stack {
+    top: 76px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
+}
