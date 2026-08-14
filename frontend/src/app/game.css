@@ -13,7 +13,10 @@
 .gc-page {
   max-width: 1280px;
   margin: 0 auto;
-  padding: 40px 32px 96px;
+  /* The navbar is fixed and 76px tall, so it takes no space in the flow. With
+     only 40px here the cabinet slid underneath it. Matches the leaderboard
+     page, which already cleared it properly. */
+  padding: 116px 32px 96px;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -668,7 +671,8 @@
 }
 
 @media (max-width: 640px) {
-  .gc-page { padding: 20px 14px 56px; gap: 16px; }
+    /* Navbar is 64px on narrow screens. */
+  .gc-page { padding: 92px 14px 56px; gap: 16px; }
   .gc-statusbar { padding: 0 12px; }
   .gc-statusbar-left { gap: 12px; }
   .gc-hud-score, .gc-hud-enemies { top: 10px; }

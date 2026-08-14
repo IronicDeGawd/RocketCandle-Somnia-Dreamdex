@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useAccount, useChainId, usePublicClient, useWalletClient } from "wagmi";
+import {
+  useAccount,
+  useChainId,
+  usePublicClient,
+  useSwitchChain,
+  useWalletClient,
+} from "wagmi";
+import { getWalletClient } from "wagmi/actions";
+import { somniaNetwork, wagmiConfig } from "@/lib/wagmi";
 import { parseUnits } from "viem";
 
 import {
@@ -31,6 +39,7 @@ import {
 
 export type SessionStep =
   | "idle"
+  | "switching-network"
   | "vault-mode"
   | "approving"
   | "depositing"
@@ -54,6 +63,7 @@ export function useSessionKey(): UseSessionKey {
   const chainId = useChainId();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
+  const { switchChainAsync } = useSwitchChain();
 
   const [sessionKey, setSessionKey] = useState<SessionKey | null>(null);
   const [authorized, setAuthorized] = useState(false);
@@ -90,12 +100,57 @@ export function useSessionKey(): UseSessionKey {
 
   const enable = useCallback(
     async (symbol: string, usdsoAmount: string) => {
-      if (!walletClient || !publicClient || !address) {
+      if (!address) {
         setError("Connect a wallet first");
+        return;
+      }
+      if (!publicClient) {
+        setError("Could not reach the chain - try again in a moment");
         return;
       }
 
       setError(null);
+
+      /*
+       * Get onto Somnia before anything else.
+       *
+       * wagmi hands back no wallet client at all while the wallet sits on a
+       * chain its config does not list - so a wallet connected to, say, Base
+       * looked identical to no wallet, and this reported "Connect a wallet
+       * first" to somebody who plainly had one connected.
+       *
+       * The switch used to be deferred to score submission, which is far too
+       * late: every trade happens before that. It belongs here, at the first
+       * step that needs to sign anything.
+       */
+      let signer = walletClient;
+
+      if (chainId !== somniaNetwork.id || !signer) {
+        try {
+          setStep("switching-network");
+          await switchChainAsync({ chainId: somniaNetwork.id });
+
+          // Read the client straight from wagmi rather than waiting for the
+          // hook to re-render, so this runs on without a second button press.
+          signer = await getWalletClient(wagmiConfig, {
+            chainId: somniaNetwork.id,
+          });
+        } catch {
+          setStep("idle");
+          setError(
+            `Approve the switch to ${somniaNetwork.name} in your wallet, then try again`
+          );
+          return;
+        }
+      }
+
+      if (!signer) {
+        setStep("idle");
+        setError(
+          `Your wallet is not on ${somniaNetwork.name}. Switch network and try again`
+        );
+        return;
+      }
 
       try {
         const meta = await fetchMarket(symbol);
@@ -114,7 +169,7 @@ export function useSessionKey(): UseSessionKey {
         //    session key would have nothing to trade against.
         setStep("vault-mode");
         await wait(
-          await walletClient.writeContract({
+          await signer.writeContract({
             address: meta.pool,
             abi: SPOT_POOL_ABI,
             functionName: "setManualVaultMode",
@@ -133,7 +188,7 @@ export function useSessionKey(): UseSessionKey {
         if (allowance < amount) {
           setStep("approving");
           await wait(
-            await walletClient.writeContract({
+            await signer.writeContract({
               address: USDSO_ADDRESS,
               abi: ERC20_ABI,
               functionName: "approve",
@@ -145,7 +200,7 @@ export function useSessionKey(): UseSessionKey {
         // 3. The working capital the game trades with.
         setStep("depositing");
         await wait(
-          await walletClient.writeContract({
+          await signer.writeContract({
             address: meta.pool,
             abi: SPOT_POOL_ABI,
             functionName: "deposit",
@@ -156,7 +211,7 @@ export function useSessionKey(): UseSessionKey {
         // 4. Place and cancel only. Never withdraw.
         setStep("granting");
         await wait(
-          await walletClient.writeContract({
+          await signer.writeContract({
             address: operatorRegistryFor(chainId),
             abi: OPERATOR_REGISTRY_ABI,
             functionName: "setOperatorApprovalForPool",
@@ -176,7 +231,14 @@ export function useSessionKey(): UseSessionKey {
         setError((e as Error).message?.split("\n")[0] ?? "Setup failed");
       }
     },
-    [walletClient, publicClient, address, chainId, refreshAuthorization]
+    [
+      walletClient,
+      publicClient,
+      address,
+      chainId,
+      switchChainAsync,
+      refreshAuthorization,
+    ]
   );
 
   const revoke = useCallback(

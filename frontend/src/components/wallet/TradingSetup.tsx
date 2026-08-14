@@ -17,6 +17,7 @@ import "@/app/trading.css";
  */
 
 const STEP_LABELS: Record<string, string> = {
+  "switching-network": "Switching to Somnia...",
   "vault-mode": "Moving fills to the exchange vault...",
   approving: "Approving USDso...",
   depositing: "Depositing your stake...",
@@ -27,6 +28,7 @@ const STEP_LABELS: Record<string, string> = {
 // The order the four setup steps happen in, so progress can be drawn even
 // though "approving" is skipped when the pool already has enough allowance.
 const SETUP_STEPS: { key: string; label: string }[] = [
+  { key: "switching-network", label: STEP_LABELS["switching-network"] },
   { key: "vault-mode", label: STEP_LABELS["vault-mode"] },
   { key: "approving", label: STEP_LABELS.approving },
   { key: "depositing", label: STEP_LABELS.depositing },
