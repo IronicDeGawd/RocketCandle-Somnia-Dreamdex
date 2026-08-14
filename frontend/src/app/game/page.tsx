@@ -29,7 +29,6 @@ import Navbar from "@/components/layout/Navbar";
 import NotificationSystem, {
   useNotifications,
 } from "@/components/ui/NotificationSystem";
-import "../game.css";
 
 // Dynamically import PhaserGame to avoid SSR issues
 const TradingSetup = dynamic(

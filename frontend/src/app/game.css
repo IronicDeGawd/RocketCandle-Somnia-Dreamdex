@@ -654,3 +654,11 @@
   .gc-bezel { gap: 16px; padding: 14px; }
   .gc-launch-btn { padding: 16px 24px; font-size: 12px; }
 }
+
+/* Between runs the bezel keeps its shape so the cabinet does not change
+   height, but it is visibly inert - aiming a game that is not on screen
+   would be a lie. */
+.gc-bezel--idle {
+  opacity: 0.4;
+  pointer-events: none;
+}

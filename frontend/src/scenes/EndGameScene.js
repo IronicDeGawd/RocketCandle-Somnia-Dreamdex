@@ -35,8 +35,6 @@ export class EndGameScene extends Phaser.Scene {
       menu: this.sound.add("menu-sound", { volume: 0.3, loop: true }),
     };
 
-    // Flat scanline backdrop instead of the old star field.
-    this.createScanlines();
 
     // Determine if this is a win or loss - drives the top notch strip color
     const isVictory = this.reason === "completed";
@@ -139,17 +137,6 @@ export class EndGameScene extends Phaser.Scene {
     return this.add.text(x, y, text, style).setOrigin(0.5);
   }
 
-  /**
-   * Flat, static scanline backdrop standing in for the old twinkling star
-   * field and floating rocket emoji.
-   */
-  createScanlines() {
-    const strip = this.add.graphics();
-    strip.fillStyle(INK, 0.12);
-    for (let y = 0; y < 600; y += 4) {
-      strip.fillRect(0, y, 1200, 2);
-    }
-  }
 
   /**
    * A flat top strip with a repeating ink notch pattern, matching the

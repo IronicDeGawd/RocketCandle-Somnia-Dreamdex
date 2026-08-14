@@ -39,6 +39,15 @@ export interface GameHud {
   marketTicker: string;
   angle: number;
   power: number;
+  /**
+   * Is a run actually on screen?
+   *
+   * False while the loading and menu scenes are showing. Without this the
+   * overlay drew a score of zero and an empty enemy count on top of the menu,
+   * because "no game running" and "a game running with nothing in it" look
+   * identical from a snapshot of numbers.
+   */
+  active: boolean;
   /** null when no auto-launch countdown is running. */
   autoLaunchSeconds: number | null;
   canLaunch: boolean;
@@ -71,6 +80,7 @@ export const EMPTY_HUD: GameHud = {
   marketTicker: "",
   angle: 45,
   power: 50,
+  active: false,
   autoLaunchSeconds: null,
   canLaunch: true,
   position: null,

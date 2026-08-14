@@ -5,6 +5,9 @@ import type { ReactNode, RefObject } from "react";
 import type { GameControls, GameHud as GameHudState } from "@/hooks/useGameHud";
 import GameHud from "./GameHud";
 import AimControls from "./AimControls";
+// Imported here rather than from the page: /practice mounts this cabinet too,
+// and a stylesheet attached to one route left the other route unstyled.
+import "@/app/game.css";
 
 /**
  * The 1A cabinet: the strips of dead space around the old canvas become the

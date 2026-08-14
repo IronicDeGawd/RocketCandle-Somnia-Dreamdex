@@ -238,6 +238,9 @@
 @media (max-width: 480px) {
   .nb-inner { padding: 0 14px; height: 64px; }
   .nb-brand-sub { display: none; }
+  /* The wordmark ran underneath the connect button at this width. The mark
+     alone is enough to identify the bar; the name is on the page anyway. */
+  .nb-brand-title { display: none; }
   .nb-connect-btn { font-size: 9px; padding: 9px 12px; }
   .nb-dropdown { width: min(260px, calc(100vw - 28px)); }
 }

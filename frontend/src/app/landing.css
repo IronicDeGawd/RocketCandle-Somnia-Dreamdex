@@ -439,3 +439,17 @@
   .lp-feature-col { padding: 24px 20px; }
   .lp-htp { padding: 24px 16px; }
 }
+
+
+/* The bar is fixed, so the page has to start below it. The utility class this
+   page used was shorter than the bar at every width, which clipped the top
+   line of the title. Stated here in terms of the bar's own heights. */
+.lp-page {
+  padding-top: 100px;
+}
+
+@media (max-width: 480px) {
+  .lp-page {
+    padding-top: 88px;
+  }
+}

@@ -17,8 +17,12 @@ export interface AimControlsProps {
 }
 
 export default function AimControls({ hud, controls }: AimControlsProps) {
+  // The bezel stays visible between runs so the cabinet keeps its shape, but
+  // aiming something that is not on screen would be a lie.
+  const live = hud.active;
+
   return (
-    <div className="gc-bezel">
+    <div className={`gc-bezel${live ? "" : " gc-bezel--idle"}`}>
       <SliderField
         label="ANGLE"
         value={hud.angle}

@@ -20,6 +20,11 @@ export interface GameHudProps {
 }
 
 export default function GameHud({ hud }: GameHudProps) {
+  // Nothing to overlay until a run is actually on screen. Otherwise the
+  // loading and menu scenes get a score of zero and an empty enemy count
+  // sitting on top of them.
+  if (!hud.active) return null;
+
   const autoLaunchPct =
     hud.autoLaunchSeconds === null
       ? 0

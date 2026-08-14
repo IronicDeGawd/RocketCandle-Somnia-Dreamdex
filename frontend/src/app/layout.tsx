@@ -5,7 +5,6 @@ import "./globals.css";
 // Last, so the new language wins over the stylesheets it is replacing.
 import "./design-system.css";
 import { Providers } from "./providers";
-import FloatingBackground from "@/components/ui/FloatingBackground";
 
 /**
  * Three faces, each with one job.
@@ -91,7 +90,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    // The font variables must land on the same element the tokens are declared
+    // on. They are declared in :root, and a custom property defined lower down
+    // is invisible to a declaration above it - putting these on <body> left
+    // every pixel and mono token resolving to nothing, silently, with the
+    // system font standing in and no error anywhere.
+    <html
+      lang="en"
+      className={`${pressStart.variable} ${instrumentSans.variable} ${geistMono.variable}`}
+    >
       <head>
         <meta
           name="viewport"
@@ -108,10 +115,7 @@ export default function RootLayout({
         <meta name="msapplication-TileColor" content="#14161a" />
         <meta name="theme-color" content="#2a2d34" />
       </head>
-      <body
-        className={`${pressStart.variable} ${instrumentSans.variable} ${geistMono.variable}`}
-      >
-        <FloatingBackground />
+      <body>
         <Providers>{children}</Providers>
       </body>
     </html>

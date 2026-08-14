@@ -414,6 +414,7 @@ export class GameScene extends Phaser.Scene {
    * than assembling one from a history of partial updates.
    */
   publishHud() {
+    this.hudState.active = true;
     if (typeof window === "undefined" || !window.rocketCandleGame) return;
     window.rocketCandleGame.hud = { ...this.hudState };
     window.dispatchEvent(new CustomEvent("rc-hud"));
@@ -427,6 +428,20 @@ export class GameScene extends Phaser.Scene {
    * cabinet mounted, or a page that hasn't hydrated yet - the keyboard path
    * still works untouched.
    */
+  /**
+   * Tell the overlay the run is over.
+   *
+   * Phaser reuses the scene object, so without this the last run's score and
+   * enemy count stay published and hang over the menu that replaces it.
+   */
+  clearHud() {
+    this.hudState.active = false;
+    if (typeof window !== "undefined" && window.rocketCandleGame) {
+      window.rocketCandleGame.hud = { ...this.hudState };
+      window.dispatchEvent(new CustomEvent("rc-hud"));
+    }
+  }
+
   registerControls() {
     if (typeof window === "undefined" || !window.rocketCandleGame) return;
 
@@ -2141,6 +2156,7 @@ export class GameScene extends Phaser.Scene {
       this.sound.stopAll();
       
       // Transition to EndGameScene with failure data
+      this.clearHud();
       this.scene.start("EndGameScene", {
         score: this.score,
         totalAttempts: this.launchAttempts,
@@ -2179,7 +2195,8 @@ export class GameScene extends Phaser.Scene {
     this.sound.stopAll();
     
     // Transition to EndGameScene with victory data
-    this.scene.start("EndGameScene", {
+    this.clearHud();
+      this.scene.start("EndGameScene", {
       score: this.score,
       totalAttempts: this.launchAttempts,
       levelsCompleted: this.maxLevels, // All levels completed
@@ -2658,7 +2675,8 @@ export class GameScene extends Phaser.Scene {
     this.sound.stopAll();
     
     // Transition to EndGameScene with manual end data
-    this.scene.start("EndGameScene", {
+    this.clearHud();
+      this.scene.start("EndGameScene", {
       score: this.score,
       totalAttempts: this.launchAttempts,
       levelsCompleted: this.currentLevel, // Levels completed before manual end

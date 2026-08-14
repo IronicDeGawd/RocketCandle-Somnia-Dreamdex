@@ -34,8 +34,6 @@ export class MenuScene extends Phaser.Scene {
       menu: this.sound.add("menu-sound", { volume: 0.3, loop: true }),
     };
 
-    // Flat scanline backdrop instead of the old star field.
-    this.createScanlines();
 
     // Start background music for menu (delay to ensure no overlap)
     this.time.delayedCall(100, () => {
@@ -97,18 +95,6 @@ export class MenuScene extends Phaser.Scene {
     return this.add.text(x, y, text, style).setOrigin(0.5);
   }
 
-  /**
-   * Flat, static scanline backdrop standing in for the old twinkling star
-   * field and floating emoji - the pixel face and palette carry the
-   * character now, so the backdrop just has to read as "this surface".
-   */
-  createScanlines() {
-    const strip = this.add.graphics();
-    strip.fillStyle(INK, 0.12);
-    for (let y = 0; y < 600; y += 4) {
-      strip.fillRect(0, y, 1200, 2);
-    }
-  }
 
   /**
    * A pixel-face button that follows the surface rule: 4px ink border, no
@@ -243,7 +229,9 @@ export class MenuScene extends Phaser.Scene {
 
     // The provenance line - one of the most important facts in the product,
     // so it gets its own bordered panel and the mono face, in blue.
-    const panelY = 300;
+    // Clear of the second chip row, which ends at y=280. At 300 the panel
+    // started at 273 and sat on top of the Ether and Bitcoin chips.
+    const panelY = 320;
     const panelHeight = 54;
 
     this.add.rectangle(
