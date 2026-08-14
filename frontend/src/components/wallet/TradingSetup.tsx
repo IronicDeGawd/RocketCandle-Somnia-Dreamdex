@@ -51,6 +51,8 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
   const [stopBusy, setStopBusy] = useState(false);
   const [stopError, setStopError] = useState<string | null>(null);
   const [stopResting, setStopResting] = useState(false);
+  const [buyBusy, setBuyBusy] = useState(false);
+  const [buyError, setBuyError] = useState<string | null>(null);
 
   /** How far the position may fall before it sells itself. */
   const FLOOR_DROP_PCT = 10;
@@ -129,6 +131,36 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
     await enable(symbol, amount);
     await refresh();
   }, [enable, refresh, symbol, amount]);
+
+  /**
+   * Actually buy in.
+   *
+   * Enabling trading only funds the vault and authorises this browser's key -
+   * it does not put the player in the market. Without this step the vault sits
+   * funded, the stop control reports that there is nothing to protect, and the
+   * eject and firepower keys have no position to act on. Everything downstream
+   * of here needs a position to exist first.
+   */
+  const handleBuyIn = useCallback(async () => {
+    if (!bridge) return;
+    setBuyBusy(true);
+    setBuyError(null);
+
+    try {
+      const stake = Number(amount);
+      if (!Number.isFinite(stake) || stake <= 0) {
+        setBuyError("Enter a stake above zero first.");
+        return;
+      }
+
+      const opened = await bridge.open(stake);
+      if (!opened) setBuyError("A position is already open.");
+    } catch (e) {
+      setBuyError((e as Error).message ?? "Could not take the position");
+    } finally {
+      setBuyBusy(false);
+    }
+  }, [bridge, amount]);
 
   const busy = step !== "idle" && step !== "ready";
   const setupIndex = SETUP_STEPS.findIndex((s) => s.key === step);
@@ -274,8 +306,9 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
                       money</strong>.
                     </li>
                     <li>
-                      Three signatures now, then none — no wallet popups
-                      between shots.
+                      Three or four signatures now, then none — no wallet
+                      popups between shots. The fourth is only needed the
+                      first time you allow this market to take USDso.
                     </li>
                     <li>
                       If your position falls{" "}
@@ -321,7 +354,27 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
                   can trade for you, and nothing else.
                 </p>
 
-                {hasOpenStop ? (
+                {!snapshot?.open ? (
+                  <div className="ts-stop">
+                    <p className="ts-note">
+                      Your stake is deposited but not yet in the market. Buying
+                      in puts <span className="rc-mono">{amount} USDso</span>{" "}
+                      into {symbol} for real — after that your rocket hits
+                      harder, the floor can be armed, and{" "}
+                      <span className="ts-key">E</span> ejects.
+                    </p>
+                    <button
+                      onClick={handleBuyIn}
+                      disabled={buyBusy}
+                      className="rc-btn rc-btn--primary ts-btn-full"
+                    >
+                      {buyBusy
+                        ? "Buying in..."
+                        : `Buy in with ${amount} USDso`}
+                    </button>
+                    {buyError ? <p className="ts-error">{buyError}</p> : null}
+                  </div>
+                ) : hasOpenStop ? (
                   <div className="ts-stop">
                     {stopResting ? (
                       <>
@@ -381,8 +434,9 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
                   </div>
                 ) : (
                   <p className="ts-note">
-                    There is no open position to protect yet. The stop-loss
-                    control appears once you are in the market.
+                    A position is open. This market has no stop registry, so
+                    the floor is watched by this page only — it will not hold
+                    with the tab closed.
                   </p>
                 )}
 
