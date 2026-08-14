@@ -26,20 +26,17 @@ export class PreloadScene extends Phaser.Scene {
     // Set theme background
     this.cameras.main.setBackgroundColor("#2A2D34");
 
-    // Load Pixelify Sans font - still required by GameScene's HUD text
-    this.load.script(
-      "webfont",
-      "https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js"
-    );
-
-    // Load the font when WebFont script is loaded
-    this.load.on("filecomplete-script-webfont", () => {
-      WebFont.load({
-        google: {
-          families: ["Pixelify Sans:400,500,600,700"],
-        },
-      });
-    });
+    // Make sure the faces are ready before anything is drawn.
+    //
+    // The page already declares them, so there is nothing to fetch from a
+    // third party here - this only waits for what the document is loading
+    // anyway. It matters because canvas text is painted once at its measured
+    // size: a label drawn before its face arrives is drawn in a fallback and
+    // stays that way, where HTML would simply reflow when the font landed.
+    if (typeof document !== "undefined" && document.fonts) {
+      document.fonts.load('16px "Press Start 2P"').catch(() => {});
+      document.fonts.load('16px "Geist Mono"').catch(() => {});
+    }
 
     // Decorative ink-bordered blips instead of a star field - flat dots,
     // no glow, no drift, matching the frame's fixed, non-reflowing layout.
