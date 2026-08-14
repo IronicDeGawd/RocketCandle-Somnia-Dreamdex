@@ -28,6 +28,46 @@ interface RawPlayerHistoryEntry {
   rocketsUsed: bigint;
 }
 import Navbar from "@/components/layout/Navbar";
+import "../scores.css";
+
+// A stable stand-in for a stat that has not loaded yet. Same box, same
+// border, so the tile it sits in never changes size once the real number
+// arrives - nothing above or below it has to jump.
+function StatPlaceholder({ label }: { label: string }) {
+  return (
+    <div className="sc-tile sc-tile--placeholder" aria-hidden="true">
+      <span className="sc-tile-label rc-pixel">{label}</span>
+      <span className="sc-tile-value rc-mono sc-placeholder-glyph">‑ ‑</span>
+    </div>
+  );
+}
+
+// Fixed-height rows that hold the list's shape while data is still on its
+// way in, so the panel never pops taller or shorter once it lands.
+function SkeletonRows({ count }: { count: number }) {
+  return (
+    <div className="sc-skeleton" role="presentation">
+      {Array.from({ length: count }).map((_, index) => (
+        <div key={index} className="sc-skeleton-row" />
+      ))}
+    </div>
+  );
+}
+
+function ListError({
+  onRetry,
+}: {
+  onRetry: () => void;
+}) {
+  return (
+    <div className="sc-error">
+      <p className="rc-mono sc-error-text">Could not reach the chain.</p>
+      <button onClick={onRetry} className="rc-btn rc-btn--danger sc-error-retry">
+        RETRY
+      </button>
+    </div>
+  );
+}
 
 export default function ScoresPage() {
   const { isAuthenticated, user, playerStats } = useApp();
@@ -61,19 +101,28 @@ export default function ScoresPage() {
   });
 
   // Get weekly leaderboard
-  const { data: leaderboardData, refetch: refetchLeaderboard } =
-    useReadContract({
-      address: contractAddress as `0x${string}`,
-      abi: GAME_CONTRACT_ABI,
-      functionName: "getWeeklyTopScores",
-      args: [BigInt(currentWeek), BigInt(10)], // Get top 10 scores
-      query: {
-        enabled: !!contractAddress && currentWeek > 0,
-      },
-    });
+  const {
+    data: leaderboardData,
+    isLoading: isLeaderboardLoading,
+    isError: isLeaderboardError,
+    refetch: refetchLeaderboard,
+  } = useReadContract({
+    address: contractAddress as `0x${string}`,
+    abi: GAME_CONTRACT_ABI,
+    functionName: "getWeeklyTopScores",
+    args: [BigInt(currentWeek), BigInt(10)], // Get top 10 scores
+    query: {
+      enabled: !!contractAddress && currentWeek > 0,
+    },
+  });
 
   // Get player history
-  const { data: playerHistoryData } = useReadContract({
+  const {
+    data: playerHistoryData,
+    isLoading: isPlayerHistoryLoading,
+    isError: isPlayerHistoryError,
+    refetch: refetchPlayerHistory,
+  } = useReadContract({
     address: contractAddress as `0x${string}`,
     abi: GAME_CONTRACT_ABI,
     functionName: "getPlayerHistory",
@@ -127,6 +176,11 @@ export default function ScoresPage() {
   const leaderboard = formatLeaderboardData(leaderboardData as unknown[]);
   const playerHistory = formatPlayerHistory(playerHistoryData as unknown[]);
 
+  // The leaderboard query is deliberately held off until the current week is
+  // known, so "still finding out which week we're on" reads as loading too -
+  // otherwise the panel would flash an empty state for a moment first.
+  const leaderboardLoading = currentWeek === 0 || isLeaderboardLoading;
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -140,190 +194,209 @@ export default function ScoresPage() {
 
   return (
     <>
-      {/* Navigation Bar */}
       <Navbar onNavigate={handleNavigation} />
 
-      <div
-        className="min-h-screen text-white p-4"
-        style={{ paddingTop: "100px" }}
-      >
-        {/* Header */}
-        <header className="game-header">
-          <div className="game-header-content">
-            <div className="game-title-section">
-              <h1 className="game-title">🏆 Leaderboard & Scores</h1>
-              <p className="game-subtitle">
-                Weekly rankings and your game history
-              </p>
+      <main className="sc-page">
+        <header className="sc-header">
+          <div className="sc-header-title">
+            <h1 className="sc-title rc-title">LEADERBOARD</h1>
+            <p className="sc-subtitle">
+              Weekly rankings and your game history.
+            </p>
+          </div>
+
+          <div className="sc-header-stats">
+            <div className="sc-tile">
+              <span className="sc-tile-label rc-pixel">PLAYER</span>
+              <span className="sc-tile-value rc-mono">{user?.displayName}</span>
             </div>
 
-            <div className="game-header-stats">
-              {/* Player Info */}
-              <div className="stat-card">
-                <div className="stat-label">Player</div>
-                <div className="stat-value">{user?.displayName}</div>
+            {playerStats ? (
+              <div className="sc-tile">
+                <span className="sc-tile-label rc-pixel">BEST SCORE</span>
+                <span className="sc-tile-value rc-mono sc-accent-yellow">
+                  {playerStats.bestScore.toLocaleString()}
+                </span>
               </div>
+            ) : (
+              <StatPlaceholder label="BEST SCORE" />
+            )}
 
-              {/* Player Stats */}
-              {playerStats && (
-                <>
-                  <div className="stat-card">
-                    <div className="stat-label">Best Score</div>
-                    <div className="stat-value highlight">
-                      {playerStats.bestScore.toLocaleString()}
-                    </div>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-label">WICK Tokens</div>
-                    <div className="stat-value highlight">
-                      {playerStats.totalTokens.toFixed(2)}
-                    </div>
-                  </div>
-                </>
-              )}
+            {playerStats ? (
+              <div className="sc-tile">
+                <span className="sc-tile-label rc-pixel">WICK TOKENS</span>
+                <span className="sc-tile-value rc-mono sc-accent-yellow">
+                  {playerStats.totalTokens.toFixed(2)}
+                </span>
+              </div>
+            ) : (
+              <StatPlaceholder label="WICK TOKENS" />
+            )}
 
-              {/* Back Button */}
-              <button onClick={() => router.push("/")} className="btn btn-back">
-                ← Back
-              </button>
-            </div>
+            <button onClick={() => router.push("/")} className="rc-btn sc-back-btn">
+              ← BACK
+            </button>
           </div>
         </header>
 
-        {/* Main Content */}
-        <div className="dashboard-container">
-          <div className="dashboard-games-section">
-            {/* Weekly Leaderboard */}
-            <div className="dashboard-card">
-              <h2 className="text-2xl font-bold mb-6 text-center">
-                🏆 Weekly Leaderboard
-                {currentWeek > 0 && (
-                  <span className="text-sm text-gray-400 block">
-                    Week {currentWeek}
-                  </span>
-                )}
-              </h2>
-
-              <div className="leaderboard-container">
-                {leaderboard.length > 0 ? (
-                  leaderboard.map((entry, index) => (
-                    <div
-                      key={`${entry.player}-${entry.timestamp}`}
-                      className={`leaderboard-item ${
-                        entry.player.toLowerCase() ===
-                        user?.address?.toLowerCase()
-                          ? "current-player"
-                          : ""
-                      }`}
-                    >
-                      <div className="leaderboard-info">
-                        <div className="leaderboard-rank">#{index + 1}</div>
-                        <div className="leaderboard-address">
-                          {entry.player.toLowerCase() ===
-                          user?.address?.toLowerCase()
-                            ? "You"
-                            : formatAddress(entry.player)}
-                        </div>
-                      </div>
-                      <div className="leaderboard-score">
-                        {entry.score.toLocaleString()}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="empty-state">
-                    <p>No scores yet this week!</p>
-                    <p className="text-sm text-gray-400">
-                      Be the first to play and earn tokens!
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={() => refetchLeaderboard()}
-                className="btn btn-glass mt-6 w-full"
-                style={{ marginTop: "10px" }}
-              >
-                🔄 Refresh
-              </button>
+        <section className="sc-grid">
+          {/* Weekly Leaderboard */}
+          <div className="rc-panel sc-panel">
+            <div className="rc-panel-head rc-panel-head--gain sc-panel-head-row">
+              <span>WEEKLY LEADERBOARD</span>
+              {currentWeek > 0 && <span>WEEK {currentWeek}</span>}
             </div>
 
-            {/* Player History */}
-            <div className="dashboard-card">
-              <h2 className="text-2xl font-bold mb-6 text-center">
-                📊 Your Game History
-              </h2>
-
-              <div className="leaderboard-container">
-                {playerHistory.length > 0 ? (
-                  playerHistory.slice(0, 10).map((game, index) => (
+            <div className="sc-list">
+              {leaderboardLoading ? (
+                <SkeletonRows count={5} />
+              ) : isLeaderboardError ? (
+                <ListError onRetry={() => refetchLeaderboard()} />
+              ) : leaderboard.length > 0 ? (
+                leaderboard.map((entry, index) => {
+                  const isYou =
+                    entry.player.toLowerCase() === user?.address?.toLowerCase();
+                  return (
                     <div
-                      key={`${game.timestamp}-${index}`}
-                      className="leaderboard-item"
+                      key={`${entry.player}-${entry.timestamp}`}
+                      className={`sc-row${isYou ? " sc-row--you" : ""}`}
                     >
-                      <div className="leaderboard-info">
-                        <div className="leaderboard-rank">L{game.level}</div>
-                        <div className="text-xs text-gray-400">
-                          {new Date(game.timestamp * 1000).toLocaleDateString()}
-                        </div>
-                      </div>
-                      <div className="leaderboard-score">
+                      <span className="sc-row-left rc-mono">
+                        {String(index + 1).padStart(2, "0")}&nbsp;&nbsp;
+                        {isYou ? "YOU" : formatAddress(entry.player)}
+                      </span>
+                      <span className="sc-row-right rc-mono">
+                        {entry.score.toLocaleString()}
+                      </span>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="sc-empty">
+                  <p className="rc-pixel sc-empty-title">
+                    NO SCORES
+                    <br />
+                    THIS WEEK
+                  </p>
+                  <p className="sc-empty-copy">Be the first to play this week.</p>
+                  <button
+                    onClick={() => router.push("/practice")}
+                    className="rc-btn rc-btn--primary"
+                  >
+                    PLAY
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="sc-panel-footer">
+              <button onClick={() => refetchLeaderboard()} className="rc-btn">
+                REFRESH
+              </button>
+            </div>
+          </div>
+
+          {/* Player History + lifetime stats */}
+          <div className="sc-side">
+            <div className="rc-panel sc-panel">
+              <div className="rc-panel-head">YOUR GAME HISTORY</div>
+
+              <div className="sc-list">
+                {isPlayerHistoryLoading ? (
+                  <SkeletonRows count={3} />
+                ) : isPlayerHistoryError ? (
+                  <ListError onRetry={() => refetchPlayerHistory()} />
+                ) : playerHistory.length > 0 ? (
+                  playerHistory.slice(0, 10).map((game, index) => (
+                    <div key={`${game.timestamp}-${index}`} className="sc-row">
+                      <span className="sc-row-left rc-mono">
+                        LVL {game.level} ·{" "}
+                        {new Date(game.timestamp * 1000).toLocaleDateString(
+                          "en-US",
+                          { day: "2-digit", month: "short" }
+                        )}
+                      </span>
+                      <span className="sc-row-right rc-mono">
                         {game.score.toLocaleString()}
-                      </div>
+                      </span>
                     </div>
                   ))
                 ) : (
-                  <div className="empty-state">
-                    <p>No games played yet!</p>
-                    <p className="text-sm text-gray-400">
+                  <div className="sc-empty">
+                    <p className="rc-pixel sc-empty-title">NO GAMES YET</p>
+                    <p className="sc-empty-copy">
                       Start playing to see your history here.
                     </p>
+                    <button
+                      onClick={() => router.push("/practice")}
+                      className="rc-btn rc-btn--primary"
+                    >
+                      PLAY
+                    </button>
                   </div>
                 )}
               </div>
 
               {playerHistory.length > 10 && (
-                <div className="text-center mt-4 text-sm text-gray-400">
+                <div className="sc-panel-footer sc-panel-footer--note">
                   Showing latest 10 games
                 </div>
               )}
             </div>
-          </div>
 
-          {/* Player Stats Grid */}
-          {playerStats && (
-            <div className="stats-grid mt-8">
-              <div className="stat-item">
-                <div className="stat-value">{playerStats.totalGames}</div>
-                <div className="stat-label">Total Games</div>
-              </div>
-              <div className="stat-item">
-                <div className="stat-value">
-                  {playerStats.bestScore.toLocaleString()}
+            <div className="sc-tiles">
+              {playerStats ? (
+                <div className="sc-tile">
+                  <span className="sc-tile-label rc-pixel">GAMES</span>
+                  <span className="sc-tile-value rc-mono">
+                    {playerStats.totalGames}
+                  </span>
                 </div>
-                <div className="stat-label">Best Score</div>
-              </div>
-              <div className="stat-item">
-                <div className="stat-value">
-                  {playerStats.totalTokens.toFixed(2)}
+              ) : (
+                <StatPlaceholder label="GAMES" />
+              )}
+
+              {playerStats ? (
+                <div className="sc-tile">
+                  <span className="sc-tile-label rc-pixel">BEST</span>
+                  <span className="sc-tile-value rc-mono sc-accent-yellow">
+                    {playerStats.bestScore.toLocaleString()}
+                  </span>
                 </div>
-                <div className="stat-label">Total WICK</div>
-              </div>
-              <div className="stat-item">
-                <div className="stat-value">
-                  {playerStats.totalGames > 0
-                    ? Math.round(
-                        (playerStats.totalTokens / playerStats.totalGames) * 100
-                      ) / 100
-                    : 0}
+              ) : (
+                <StatPlaceholder label="BEST" />
+              )}
+
+              {playerStats ? (
+                <div className="sc-tile">
+                  <span className="sc-tile-label rc-pixel">WICK</span>
+                  <span className="sc-tile-value rc-mono">
+                    {playerStats.totalTokens.toFixed(2)}
+                  </span>
                 </div>
-                <div className="stat-label">Avg Tokens/Game</div>
-              </div>
+              ) : (
+                <StatPlaceholder label="WICK" />
+              )}
+
+              {playerStats ? (
+                <div className="sc-tile">
+                  <span className="sc-tile-label rc-pixel">AVG</span>
+                  <span className="sc-tile-value rc-mono">
+                    {playerStats.totalGames > 0
+                      ? Math.round(
+                          (playerStats.totalTokens / playerStats.totalGames) *
+                            100
+                        ) / 100
+                      : 0}
+                  </span>
+                </div>
+              ) : (
+                <StatPlaceholder label="AVG" />
+              )}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        </section>
+      </main>
     </>
   );
 }

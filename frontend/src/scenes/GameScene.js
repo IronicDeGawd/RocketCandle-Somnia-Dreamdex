@@ -1,4 +1,3 @@
-import { UIComponents } from "@/components/UIComponents.js";
 import { MarketDataProvider } from "@/data/MarketDataProvider.js";
 import { DreamdexLiveFeed } from "@/data/DreamdexLiveFeed.js";
 import { KeyboardTimerController } from "@/utils/KeyboardTimerController.js";
@@ -62,16 +61,6 @@ export class GameScene extends Phaser.Scene {
     this.blocks = null;
     this.enemies = null;
 
-    // UI elements
-    this.scoreText = null;
-    this.levelText = null;
-    this.enemiesText = null;
-    this.angleSlider = null;
-    this.powerSlider = null;
-    this.launchButton = null;
-    this.angleText = null;
-    this.powerText = null;
-
     // Keyboard and timer controller
     this.keyboardTimerController = null;
     this.angleStepSize = 2; // degrees per key press
@@ -80,10 +69,34 @@ export class GameScene extends Phaser.Scene {
     // Legacy timer properties (kept for compatibility)
     this.launchTimer = null;
     this.timerBar = null;
-    this.timerText = null;
     this.timerDuration = 8000; // 8 seconds in milliseconds
     this.isTimerActive = false;
     this.timerStartTime = 0;
+
+    // The HUD used to be Phaser text drawn on the canvas. It is now a plain
+    // object the React cabinet reads through `window.rocketCandleGame.hud` -
+    // see publishHud(). Only world-anchored art (score popups, wall-collapse
+    // notices, the trajectory preview, the level-transition banner) is still
+    // drawn inside the scene.
+    this.hudState = {
+      score: 0,
+      totalAttempts: 0,
+      levelAttempts: 0,
+      maxAttempts: this.maxAttemptsPerLevel,
+      level: 1,
+      totalLevels: this.maxLevels,
+      levelName: "",
+      enemiesLeft: 0,
+      terrainCaption: "",
+      marketTicker: "",
+      angle: this.launchAngle,
+      power: this.launchPower,
+      autoLaunchSeconds: null,
+      canLaunch: true,
+      position: null,
+      orders: null,
+      fees: null,
+    };
   }
 
   /**
@@ -379,103 +392,79 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Create HUD elements (score, level, enemies remaining)
+   * Set up the HUD bridge.
+   *
+   * The readouts (score, attempts, level, terrain, ticker, enemy count,
+   * position, fees) used to be Phaser text objects drawn over the play field.
+   * They are now HTML rendered by the React cabinet, fed through
+   * `window.rocketCandleGame.hud` - see publishHud(). This only wires the
+   * bridge and pushes the first snapshot.
    */
   createHUD() {
-    // Score display (top-left)
-    this.scoreText = this.add.text(16, 16, "Score: 0", {
-      fontSize: "28px", // Increased from 24px
-      fill: "#ffffff",
-      fontFamily: "Pixelify Sans, Arial",
-      stroke: "#000000", // Add black outline for better visibility
-      strokeThickness: 3, // Thick stroke for contrast against any background
-    });
-
-    // The zero-fee counter. This is the line the whole demo exists to earn:
-    // a game can fire order after order only because nobody takes a cut.
-    this.feeCounterText = this.add.text(16, 98, "", {
-      fontSize: "14px",
-      fill: "#4ade80",
-      fontFamily: "Pixelify Sans, Arial",
-      stroke: "#000000",
-      strokeThickness: 2,
-    });
-
-    // The player's position, when they have one (top-left, under the score)
-    this.positionText = this.add.text(16, 78, "", {
-      fontSize: "15px",
-      fill: "#9aa4c4",
-      fontFamily: "Pixelify Sans, Arial",
-      stroke: "#000000",
-      strokeThickness: 2,
-    });
-
-    // Live market heartbeat (top-center, under the provenance line)
-    this.marketTickerText = this.add
-      .text(600, 68, "", {
-        fontSize: "14px",
-        fill: "#9aa4c4",
-        fontFamily: "Pixelify Sans, Arial",
-        stroke: "#000000",
-        strokeThickness: 2,
-      })
-      .setOrigin(0.5, 0);
+    this.registerControls();
     this.updateMarketTicker();
+    this.updateHUD();
+  }
 
-    // Terrain provenance (top-center, under the level label)
-    this.marketText = this.add
-      .text(600, 48, "", {
-        fontSize: "14px",
-        fill: "#9aa4c4",
-        fontFamily: "Pixelify Sans, Arial",
-        stroke: "#000000",
-        strokeThickness: 2,
-      })
-      .setOrigin(0.5, 0);
+  /**
+   * Publish the current HUD snapshot for the React cabinet to read.
+   *
+   * A plain object rather than individual events, so a component mounting
+   * mid-run (or a React re-render) can always read a consistent whole rather
+   * than assembling one from a history of partial updates.
+   */
+  publishHud() {
+    if (typeof window === "undefined" || !window.rocketCandleGame) return;
+    window.rocketCandleGame.hud = { ...this.hudState };
+    window.dispatchEvent(new CustomEvent("rc-hud"));
+  }
 
-    // Level display (top-center)
-    this.levelText = this.add
-      .text(600, 16, "Level: 3", {
-        // Updated center position for 1200px width
-        fontSize: "28px", // Increased from 24px
-        fill: "#ffffff",
-        fontFamily: "Pixelify Sans, Arial",
-        stroke: "#000000", // Add black outline for better visibility
-        strokeThickness: 3, // Thick stroke for contrast against any background
-      })
-      .setOrigin(0.5, 0);
+  /**
+   * Hand React a way to drive the launcher.
+   *
+   * The scene owns the actual state (angle, power, launch, eject...); these
+   * are just the doors in. If React never calls them - practice mode with no
+   * cabinet mounted, or a page that hasn't hydrated yet - the keyboard path
+   * still works untouched.
+   */
+  registerControls() {
+    if (typeof window === "undefined" || !window.rocketCandleGame) return;
 
-    // Enemies remaining (top-right)
-    this.enemiesText = this.add
-      .text(1184, 16, "Enemies: 0", {
-        // Updated for 1200px width (1200-16)
-        fontSize: "28px", // Increased from 24px
-        fill: "#ffffff",
-        fontFamily: "Pixelify Sans, Arial",
-        stroke: "#000000", // Add black outline for better visibility
-        strokeThickness: 3, // Thick stroke for contrast against any background
-      })
-      .setOrigin(1, 0);
+    window.rocketCandleGame.controls = {
+      setAngle: (value) => this.setAngleFromControls(value),
+      setPower: (value) => this.setPowerFromControls(value),
+      launch: () => this.launchRocket(),
+      endGame: () => this.endGameManually(),
+      eject: () => this.ejectPosition(),
+      addFirepower: () => this.buyFirepower(),
+    };
+  }
 
-    // Total attempts display (top-left, below score)
-    this.attemptsText = this.add.text(16, 50, "Total: 0", {
-      fontSize: "22px", // Increased from 20px
-      fill: "#ffffff",
-      fontFamily: "Pixelify Sans, Arial",
-      stroke: "#000000", // Add black outline for better visibility
-      strokeThickness: 3, // Thick stroke for contrast against any background
-    });
+  /** @param {number} value */
+  setAngleFromControls(value) {
+    const clamped = Phaser.Math.Clamp(Math.round(value), 15, 75);
+    if (clamped === this.launchAngle) return;
 
-    // Level attempts display (top-left, below total attempts)
-    this.levelAttemptsText = this.add.text(16, 75, "Attempt: 0/3", {
-      fontSize: "20px", // Increased from 18px
-      fill: "#ff6666",
-      fontFamily: "Pixelify Sans, Arial",
-      stroke: "#000000", // Add black outline for better visibility
-      strokeThickness: 3, // Thick stroke for contrast against any background
-    });
+    this.launchAngle = clamped;
+    this.updateLauncherRotation();
+    this.updateControlDisplay();
+    this.showTemporaryTrajectory();
+    if (this.keyboardTimerController) {
+      this.keyboardTimerController.startTimer();
+    }
+  }
 
-    //console.log("✅ HUD elements created");
+  /** @param {number} value */
+  setPowerFromControls(value) {
+    const clamped = Phaser.Math.Clamp(Math.round(value), 0, 100);
+    if (clamped === this.launchPower) return;
+
+    this.launchPower = clamped;
+    this.updateControlDisplay();
+    this.showTemporaryTrajectory();
+    if (this.keyboardTimerController) {
+      this.keyboardTimerController.startTimer();
+    }
   }
 
   /**
@@ -578,34 +567,39 @@ export class GameScene extends Phaser.Scene {
    * Deliberately does not end the run. The money decision and the game
    * decision are different decisions, and keeping them apart is what teaches
    * a first-timer what holding a position actually means.
+   *
+   * Shared by the E key and the cabinet's EJECT button - both are just doors
+   * into the same action.
    */
-  setUpEjectKey() {
-    this.input.keyboard.on("keydown-E", async () => {
-      const bridge = this.getTradingBridge();
-      if (!bridge || !this.position?.open || this.ejecting) return;
+  async ejectPosition() {
+    const bridge = this.getTradingBridge();
+    if (!bridge || !this.position?.open || this.ejecting) return;
 
-      this.ejecting = true;
-      this.showEjectNotice("Selling your position...");
+    this.ejecting = true;
+    this.showEjectNotice("Selling your position...");
 
-      try {
-        const result = await bridge.close();
-        this.ejected = true;
-        this.position = await bridge.snapshot();
-        this.updatePositionText();
-        this.updateFeeCounter();
+    try {
+      const result = await bridge.close();
+      this.ejected = true;
+      this.position = await bridge.snapshot();
+      this.updatePositionText();
+      this.updateFeeCounter();
 
-        if (result) {
-          const sign = result.pnl >= 0 ? "+" : "";
-          this.showEjectNotice(
-            `Ejected - you keep ${result.proceeds.toFixed(4)} USDso (${sign}${result.pnl.toFixed(4)})`
-          );
-        }
-      } catch {
-        this.showEjectNotice("Could not sell right now - still holding");
-      } finally {
-        this.ejecting = false;
+      if (result) {
+        const sign = result.pnl >= 0 ? "+" : "";
+        this.showEjectNotice(
+          `Ejected - you keep ${result.proceeds.toFixed(4)} USDso (${sign}${result.pnl.toFixed(4)})`
+        );
       }
-    });
+    } catch {
+      this.showEjectNotice("Could not sell right now - still holding");
+    } finally {
+      this.ejecting = false;
+    }
+  }
+
+  setUpEjectKey() {
+    this.input.keyboard.on("keydown-E", () => this.ejectPosition());
   }
 
   /**
@@ -614,30 +608,34 @@ export class GameScene extends Phaser.Scene {
    * Opt-in, never automatic. Tying exposure to aim was rejected early on -
    * aim is dictated by where the enemies are, so the trade would be noise the
    * player cannot control, and a payout swinging on noise is a slot machine.
+   *
+   * Shared by the F key and the cabinet's firepower control.
    */
+  async buyFirepower() {
+    const bridge = this.getTradingBridge();
+    if (!bridge || !this.position?.open || this.buyingFirepower) return;
+
+    this.buyingFirepower = true;
+    this.showEjectNotice(`Buying firepower - staking ${this.exposureStep} more...`);
+
+    try {
+      this.position = await bridge.addExposure(this.exposureStep);
+      this.recalculateBlastRadius();
+      this.updatePositionText();
+      this.updateFeeCounter();
+      this.updateMarketTicker();
+      this.showEjectNotice(
+        `Bigger position, bigger blast - radius now ${this.explosionSize}px`
+      );
+    } catch {
+      this.showEjectNotice("Could not add to your position");
+    } finally {
+      this.buyingFirepower = false;
+    }
+  }
+
   setUpFirepowerKey() {
-    this.input.keyboard.on("keydown-F", async () => {
-      const bridge = this.getTradingBridge();
-      if (!bridge || !this.position?.open || this.buyingFirepower) return;
-
-      this.buyingFirepower = true;
-      this.showEjectNotice(`Buying firepower - staking ${this.exposureStep} more...`);
-
-      try {
-        this.position = await bridge.addExposure(this.exposureStep);
-        this.recalculateBlastRadius();
-        this.updatePositionText();
-        this.updateFeeCounter();
-        this.updateMarketTicker();
-        this.showEjectNotice(
-          `Bigger position, bigger blast - radius now ${this.explosionSize}px`
-        );
-      } catch {
-        this.showEjectNotice("Could not add to your position");
-      } finally {
-        this.buyingFirepower = false;
-      }
-    });
+    this.input.keyboard.on("keydown-F", () => this.buyFirepower());
   }
 
   /** @param {string} message */
@@ -646,7 +644,7 @@ export class GameScene extends Phaser.Scene {
       .text(600, 150, message, {
         fontSize: "18px",
         fill: "#ffd166",
-        fontFamily: "Pixelify Sans, Arial",
+        fontFamily: '"Press Start 2P", monospace',
         stroke: "#000000",
         strokeThickness: 4,
       })
@@ -670,44 +668,39 @@ export class GameScene extends Phaser.Scene {
    * because the exchange charges nothing, on either side, on every pair.
    */
   updateFeeCounter() {
-    if (!this.feeCounterText) return;
-
     const bridge = this.getTradingBridge();
     if (!bridge) {
-      this.feeCounterText.setText("");
+      this.hudState.orders = null;
+      this.hudState.fees = null;
+      this.publishHud();
       return;
     }
 
     const orders = bridge.ordersPlaced();
-    if (!orders) {
-      this.feeCounterText.setText("");
-      return;
-    }
-
-    this.feeCounterText.setText(
-      `orders placed: ${orders}  ·  fees paid: $0.00`
-    );
+    this.hudState.orders = orders || null;
+    // Not a placeholder waiting to be filled in - the exchange charges
+    // nothing, on either side, on every pair, so this is always zero.
+    this.hudState.fees = orders ? 0 : null;
+    this.publishHud();
   }
 
   /** Show the stake, what it is worth now, and the way out. */
   updatePositionText() {
-    if (!this.positionText) return;
-
     if (!this.position || !this.position.open) {
-      this.positionText.setText(
-        this.ejected ? "Position closed - playing on" : ""
-      );
-      this.positionText.setColor("#9aa4c4");
+      this.hudState.position = null;
+      this.publishHud();
       return;
     }
 
     const { stake, value, pnl, pnlPct } = this.position;
-    const sign = pnl >= 0 ? "+" : "";
-
-    this.positionText.setText(
-      `Staked ${stake.toFixed(3)} USDso  ·  now ${value.toFixed(3)}  ·  ${sign}${pnl.toFixed(4)} (${sign}${pnlPct.toFixed(2)}%)  ·  auto-sell at -${this.stopLossPct}%   [E] eject  [F] +${this.exposureStep} firepower`
-    );
-    this.positionText.setColor(pnl >= 0 ? "#4ade80" : "#f87171");
+    this.hudState.position = {
+      stake,
+      value,
+      pnl,
+      pnlPct,
+      floorPct: this.stopLossPct,
+    };
+    this.publishHud();
   }
 
   /**
@@ -891,7 +884,7 @@ export class GameScene extends Phaser.Scene {
       .text(600, 120, message, {
         fontSize: "20px",
         fill: wasResistance ? "#4ade80" : "#f87171",
-        fontFamily: "Pixelify Sans, Arial",
+        fontFamily: '"Press Start 2P", monospace',
         stroke: "#000000",
         strokeThickness: 4,
       })
@@ -1006,29 +999,24 @@ export class GameScene extends Phaser.Scene {
    * place an order on their phone and watch it appear on the player's screen.
    */
   updateMarketTicker() {
-    if (!this.marketTickerText) return;
+    this.hudState.marketTicker = this.describeMarketTicker();
+    this.publishHud();
+  }
 
+  /** @returns {string} the market's heartbeat line, for the HUD well */
+  describeMarketTicker() {
     if (this.marketFeedStatus !== "live") {
-      this.marketTickerText.setText(
-        this.marketFeedStatus === "connecting" ? "market: connecting" : ""
-      );
-      this.marketTickerText.setColor("#9aa4c4");
-      return;
+      return this.marketFeedStatus === "connecting" ? "market: connecting" : "";
     }
 
     if (!this.lastTrade) {
-      this.marketTickerText.setText("market: live, waiting for a trade");
-      this.marketTickerText.setColor("#9aa4c4");
-      return;
+      return "market: live, waiting for a trade";
     }
 
     const { side, quantity, price } = this.lastTrade;
     const book = this.describeBookHealth();
     const wind = this.describeWind();
-    this.marketTickerText.setText(
-      `${side === "buy" ? "BOUGHT" : "SOLD"} ${quantity} @ ${price}${book}${wind}`
-    );
-    this.marketTickerText.setColor(side === "buy" ? "#4ade80" : "#f87171");
+    return `${side === "buy" ? "BOUGHT" : "SOLD"} ${quantity} @ ${price}${book}${wind}`;
   }
 
   /**
@@ -1070,30 +1058,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   updateHUD() {
-    if (this.scoreText) {
-      this.scoreText.setText(`Score: ${this.score}`);
-    }
-    if (this.levelText) {
-      this.levelText.setText(`Level: ${this.currentLevel + 1}`);
-    }
-    if (this.marketText) {
-      this.marketText.setText(this.describeCurrentTerrain());
-    }
-    if (this.enemiesText) {
-      this.enemiesText.setText(`Enemies: ${this.enemiesRemaining}`);
-    }
-    if (this.attemptsText) {
-      this.attemptsText.setText(`Total: ${this.launchAttempts}`);
-    }
-    if (this.levelAttemptsText) {
-      const remaining = this.maxAttemptsPerLevel - this.currentLevelAttempts;
-      const color =
-        remaining <= 1 ? "#ff0000" : remaining === 2 ? "#ffaa00" : "#ff6666";
-      this.levelAttemptsText.setText(
-        `Attempt: ${this.currentLevelAttempts}/${this.maxAttemptsPerLevel}`
-      );
-      this.levelAttemptsText.setColor(color);
-    }
+    const levelData = this.candlestickData[this.currentLevel];
+
+    this.hudState.score = this.score;
+    this.hudState.totalAttempts = this.launchAttempts;
+    this.hudState.levelAttempts = this.currentLevelAttempts;
+    this.hudState.maxAttempts = this.maxAttemptsPerLevel;
+    this.hudState.level = this.currentLevel + 1;
+    this.hudState.totalLevels = this.maxLevels;
+    this.hudState.levelName = levelData?.name ?? "";
+    this.hudState.enemiesLeft = this.enemiesRemaining;
+    this.hudState.terrainCaption = this.describeCurrentTerrain();
+    this.hudState.canLaunch = this.canLaunch;
+
+    this.publishHud();
   }
 
   /**
@@ -1464,87 +1442,11 @@ export class GameScene extends Phaser.Scene {
     // Set initial rotation based on launch angle
     this.updateLauncherRotation();
 
-    // Create angle control slider (15°-75° range) - vertical, left of launcher
-    this.angleSlider = UIComponents.createVerticalSlider(
-      this,
-      50, // Moved further left
-      this.groundY - 200, // Moved higher up
-      15,
-      75,
-      this.launchAngle,
-      (value) => {
-        this.launchAngle = Math.round(value);
-        this.updateLauncherRotation();
-        this.updateControlDisplay();
-        this.showTemporaryTrajectory(); // Show trajectory temporarily
-        // Start timer when slider is adjusted
-        if (this.keyboardTimerController) {
-          this.keyboardTimerController.startTimer();
-        }
-      },
-      150 // height of vertical slider, increased
-    );
+    // Angle, power, LAUNCH and END GAME are no longer drawn here - they are
+    // HTML on the cabinet bezel, driven through
+    // window.rocketCandleGame.controls (see registerControls()).
 
-    // Create power control slider (0-100% range) - vertical, between angle and launcher
-    this.powerSlider = UIComponents.createVerticalSlider(
-      this,
-      100, // Adjusted x position
-      this.groundY - 200, // Moved higher up
-      0,
-      100,
-      this.launchPower,
-      (value) => {
-        this.launchPower = Math.round(value);
-        this.updateControlDisplay();
-        this.showTemporaryTrajectory(); // Show trajectory temporarily
-        // Start timer when slider is adjusted
-        if (this.keyboardTimerController) {
-          this.keyboardTimerController.startTimer();
-        }
-      },
-      150 // height of vertical slider, increased
-    );
-
-    // Create launch button (positioned above the ground)
-    this.launchButton = UIComponents.createButton(
-      this,
-      150,
-      this.groundY + 25, // Moved above ground level
-      "LAUNCH",
-      () => this.launchRocket(),
-      {
-        width: 120, // Wider button
-        height: 40, // Taller button
-        fontSize: "20px", // Increased font size for Pixelify Sans
-        fill: 0x8a2be2, // Purple background
-        hoverFill: 0x7b68ee, // Lighter purple on hover
-        textColor: "#ffffff", // White text for contrast
-        fontFamily: "Pixelify Sans, Arial", // Add Pixelify Sans font
-      }
-    );
-
-    // Create end game button (positioned next to launch button)
-    this.endGameButton = UIComponents.createButton(
-      this,
-      290, // Positioned to the right of launch button
-      this.groundY + 25, // Same height as launch button
-      "END GAME",
-      () => this.endGameManually(),
-      {
-        width: 120, // Same width as launch button
-        height: 40, // Same height as launch button
-        fontSize: "16px", // Slightly smaller font for longer text
-        fill: 0xdc143c, // Crimson red background
-        hoverFill: 0xff6347, // Tomato red on hover
-        textColor: "#ffffff", // White text for contrast
-        fontFamily: "Pixelify Sans, Arial", // Same font family
-      }
-    );
-
-    // Create control display labels
-    this.createControlLabels();
-
-    //console.log("✅ Launcher controls created");
+    //console.log("✅ Launcher created");
   }
 
   /**
@@ -1560,112 +1462,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Create control display labels
-   */
-  createControlLabels() {
-    // Angle label and value (for vertical slider on far left)
-    this.add
-      .text(50, this.groundY - 200 - 90, "Angle:", {
-        // Adjusted position to be above slider
-        fontSize: "18px", // Increased from 16px
-        fill: "#ffffff",
-        fontFamily: "Pixelify Sans, Arial",
-        stroke: "#000000", // Add black outline for better visibility
-        strokeThickness: 1,
-      })
-      .setOrigin(0.5, 0.5);
-
-    this.angleText = this.add
-      .text(50, this.groundY - 200 + 90, `${this.launchAngle}°`, {
-        // Adjusted position to be below slider
-        fontSize: "20px", // Increased from 18px
-        fill: "#ffff00",
-        fontFamily: "Pixelify Sans, Arial",
-        stroke: "#000000", // Add black outline for better visibility
-        strokeThickness: 1,
-      })
-      .setOrigin(0.5, 0.5);
-
-    // Power label and value (for vertical slider in middle)
-    this.add
-      .text(100, this.groundY - 200 - 90, "Power:", {
-        // Adjusted position to be above slider
-        fontSize: "18px", // Increased from 16px
-        fill: "#ffffff",
-        stroke: "#000000", // Add black outline for better visibility
-        strokeThickness: 1,
-        fontFamily: "Pixelify Sans, Arial",
-      })
-      .setOrigin(0.5, 0.5);
-
-    this.powerText = this.add
-      .text(100, this.groundY - 200 + 90, `${this.launchPower}%`, {
-        // Adjusted position to be below slider
-        fontSize: "20px", // Increased from 18px
-        fill: "#ff6b6b",
-        fontFamily: "Pixelify Sans, Arial",
-        stroke: "#000000", // Add black outline for better visibility
-        strokeThickness: 1,
-      })
-      .setOrigin(0.5, 0.5);
-  }
-
-  /**
-   * Update control display values
+   * Push the current angle/power out to the HUD bridge.
    */
   updateControlDisplay() {
-    if (this.angleText) {
-      this.angleText.setText(`${this.launchAngle}°`);
-    }
-    if (this.powerText) {
-      this.powerText.setText(`${this.launchPower}%`);
-    }
-
-    // Update slider handle positions to match keyboard changes
-    this.updateSliderPositions();
-  }
-
-  /**
-   * Update slider handle positions to match current values
-   */
-  updateSliderPositions() {
-    // Update angle slider handle position
-    if (this.angleSlider && this.angleSlider.handle) {
-      const angleSliderConfig = {
-        min: 15,
-        max: 75,
-        height: 150,
-        centerY: this.groundY - 200,
-      };
-
-      const angleProgress =
-        (this.launchAngle - angleSliderConfig.min) /
-        (angleSliderConfig.max - angleSliderConfig.min);
-      const angleHandleY =
-        angleSliderConfig.centerY +
-        angleSliderConfig.height / 2 -
-        angleProgress * angleSliderConfig.height;
-      this.angleSlider.handle.y = angleHandleY;
-    }
-
-    // Update power slider handle position
-    if (this.powerSlider && this.powerSlider.handle) {
-      const powerSliderConfig = {
-        min: 0,
-        max: 100,
-        height: 150,
-        centerY: this.groundY - 200,
-      };
-
-      const powerProgress =
-        (this.launchPower - powerSliderConfig.min) /
-        (powerSliderConfig.max - powerSliderConfig.min);
-      const powerHandleY =
-        powerSliderConfig.centerY +
-        powerSliderConfig.height / 2 -
-        powerProgress * powerSliderConfig.height;
-      this.powerSlider.handle.y = powerHandleY;
-    }
+    this.hudState.angle = this.launchAngle;
+    this.hudState.power = this.launchPower;
+    this.publishHud();
   }
 
   /**
@@ -1864,6 +1666,7 @@ export class GameScene extends Phaser.Scene {
     rocket.setActive(false).setVisible(false);
     rocket.destroy();
     this.canLaunch = true;
+    this.updateHUD(); // Re-enable the LAUNCH control on the bezel
     this.checkLevelEndConditions(); // Check if this was the last attempt
   }
 
@@ -1887,6 +1690,7 @@ export class GameScene extends Phaser.Scene {
     rocket.setActive(false).setVisible(false);
     rocket.destroy();
     this.canLaunch = true;
+    this.updateHUD(); // Re-enable the LAUNCH control on the bezel
     this.checkLevelEndConditions();
   }
 
@@ -2276,7 +2080,7 @@ export class GameScene extends Phaser.Scene {
         fontSize: "54px", // Increased from 48px
         fill: "#ffffff",
         fontStyle: "bold",
-        fontFamily: "Pixelify Sans, Arial",
+        fontFamily: '"Press Start 2P", monospace',
       })
       .setOrigin(0.5);
 
@@ -2285,7 +2089,7 @@ export class GameScene extends Phaser.Scene {
       .text(600, 310, levelData.name, {
         fontSize: "28px", // Increased from 24px
         fill: "#ffaa00",
-        fontFamily: "Pixelify Sans, Arial",
+        fontFamily: '"Press Start 2P", monospace',
       })
       .setOrigin(0.5);
 
@@ -2294,7 +2098,7 @@ export class GameScene extends Phaser.Scene {
       .text(600, 350, `Difficulty: ${levelData.difficulty}`, {
         fontSize: "20px", // Increased from 18px
         fill: "#aaaaaa",
-        fontFamily: "Pixelify Sans, Arial",
+        fontFamily: '"Press Start 2P", monospace',
       })
       .setOrigin(0.5);
 
@@ -2328,6 +2132,7 @@ export class GameScene extends Phaser.Scene {
       // Final level failed - end the game
       this.gameOver = true;
       this.canLaunch = false;
+      this.updateHUD();
 
       // Submit final score to blockchain before ending
       this.submitFinalScoreToBlockchain("game-failed");
@@ -2360,6 +2165,7 @@ export class GameScene extends Phaser.Scene {
 
     this.gameOver = true;
     this.canLaunch = false;
+    this.updateHUD();
 
     // Play game over sound for victory
     if (this.sounds.gameOver) {
@@ -2684,6 +2490,17 @@ export class GameScene extends Phaser.Scene {
       this.keyboardTimerController.update(delta);
     }
 
+    // Push the auto-launch countdown to the HUD bridge, but only when the
+    // number on screen would actually change - the timer itself still ticks
+    // every frame, publishing every frame would not.
+    const remaining = this.keyboardTimerController
+      ? this.keyboardTimerController.getRemainingSeconds()
+      : null;
+    if (remaining !== this.hudState.autoLaunchSeconds) {
+      this.hudState.autoLaunchSeconds = remaining;
+      this.publishHud();
+    }
+
     // Update rocket trail effects and enhanced physics
     this.rockets.children.entries.forEach((rocket) => {
       if (rocket.active) {
@@ -2832,6 +2649,7 @@ export class GameScene extends Phaser.Scene {
     // Set game over state
     this.gameOver = true;
     this.canLaunch = false;
+    this.updateHUD();
 
     // Submit final score to blockchain before ending
     this.submitFinalScoreToBlockchain("game-ended-manually");

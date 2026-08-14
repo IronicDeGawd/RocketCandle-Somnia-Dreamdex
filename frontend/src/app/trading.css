@@ -1,0 +1,286 @@
+/* ===========================================================================
+   Rocket Candle — trading panel
+   ---------------------------------------------------------------------------
+   Layout on top of design-system.css. Nothing here redefines colour, border
+   or shadow tokens — it only arranges the primitives (.rc-panel, .rc-btn,
+   .rc-pixel, .rc-mono, .rc-well) into the panel's states.
+
+   Gamers first: the panel is a door, not a wall. Collapsed by default,
+   opened deliberately. A player who never opens it never sees a form.
+   =========================================================================== */
+
+.ts-root {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 560px;
+}
+
+/* --- The door: one line, one control ------------------------------------- */
+
+.ts-toggle-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  flex-wrap: wrap;
+}
+
+.ts-toggle-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ts-heading {
+  font-size: 12px;
+  margin: 0;
+}
+
+.ts-toggle-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--rc-text-faint);
+}
+
+/* --- The panel itself, once opened ---------------------------------------- */
+
+.ts-panel {
+  width: 100%;
+}
+
+.ts-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+}
+
+.ts-blurb {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--rc-text-soft);
+}
+
+.ts-key {
+  display: inline-flex;
+  font-family: var(--rc-font-pixel);
+  font-size: 9px;
+  border: var(--rc-border-thin);
+  background: var(--rc-base);
+  box-shadow: var(--rc-shadow-low);
+  padding: 3px 6px;
+  color: var(--rc-text);
+}
+
+/* --- Stake field ------------------------------------------------------------ */
+
+.ts-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ts-field-label {
+  font-size: 9px;
+  color: var(--rc-text-faint);
+}
+
+.ts-stake-well {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ts-stake-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: var(--rc-text);
+  font-family: var(--rc-font-mono);
+  font-size: 18px;
+  letter-spacing: 0.04em;
+}
+
+.ts-stake-input:focus {
+  outline: none;
+}
+
+.ts-stake-unit {
+  font-family: var(--rc-font-mono);
+  font-size: 13px;
+  color: var(--rc-text-faint);
+  flex: none;
+}
+
+/* --- Fact list -------------------------------------------------------------- */
+
+.ts-facts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--rc-text-soft);
+}
+
+.ts-facts li {
+  display: flex;
+  gap: 10px;
+}
+
+.ts-facts li::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  background: var(--rc-blue);
+  border: 2px solid var(--rc-ink);
+}
+
+/* --- Setup progress ----------------------------------------------------- */
+
+.ts-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: var(--rc-font-mono);
+  font-size: 12px;
+}
+
+.ts-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--rc-text-faint);
+}
+
+.ts-step-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.ts-step--done { color: var(--rc-text-soft); }
+.ts-step--done .ts-step-dot { background: var(--rc-yellow); border-color: var(--rc-ink); }
+
+.ts-step--current { color: var(--rc-white); }
+.ts-step--current .ts-step-dot {
+  background: var(--rc-red);
+  border-color: var(--rc-ink);
+}
+
+.ts-progress-track {
+  border: var(--rc-border);
+  background: var(--rc-well);
+  height: 14px;
+  display: flex;
+}
+
+.ts-progress-fill {
+  background: var(--rc-yellow);
+}
+
+.ts-progress-label {
+  align-self: center;
+  color: var(--rc-text-faint);
+}
+
+/* --- Ready / stop copy -------------------------------------------------- */
+
+.ts-ready {
+  margin: 0;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--rc-text-soft);
+}
+
+.ts-ready::before {
+  content: "";
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  background: var(--rc-blue);
+  border: 2px solid var(--rc-ink);
+}
+
+.ts-stop {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ts-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--rc-text-faint);
+}
+
+/* --- Error --------------------------------------------------------------- */
+
+.ts-error-box {
+  border-left: 6px solid var(--rc-red);
+  background: var(--rc-well);
+  padding: 12px 14px;
+  font-family: var(--rc-font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--rc-white);
+}
+
+.ts-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--rc-red);
+}
+
+/* --- Buttons -------------------------------------------------------------- */
+
+.ts-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ts-actions .rc-btn {
+  flex: 1;
+  min-width: 140px;
+  font-size: 9px;
+}
+
+.rc-btn.ts-btn-blue {
+  background: var(--rc-blue);
+  color: var(--rc-ink);
+}
+
+.rc-btn.ts-btn-full {
+  width: 100%;
+}
+
+/* ---------------------------------------------------------------------------
+   Responsive — nothing may overflow a 375px viewport.
+   --------------------------------------------------------------------------- */
+
+@media (max-width: 480px) {
+  .ts-root { max-width: 100%; }
+  .ts-body { padding: 16px; gap: 14px; }
+  .ts-toggle-row { padding: 12px; gap: 12px; }
+  .ts-actions { flex-direction: column; }
+  .ts-actions .rc-btn { min-width: 0; }
+}

@@ -1,0 +1,75 @@
+/* ===========================================================================
+   Rocket Candle — practice page
+   ---------------------------------------------------------------------------
+   Two elements only: the banner strip, then the game frame. The strip is the
+   only navigation on this route, so it doubles as the way back to the
+   wallet-connected app.
+   =========================================================================== */
+
+.pr-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+}
+
+.pr-banner {
+  width: 100%;
+  max-width: 1200px;
+}
+
+.pr-banner-head {
+  background: var(--rc-blue);
+  color: var(--rc-ink);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.pr-banner-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.pr-banner-body {
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.pr-banner-body p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--rc-text-soft);
+  max-width: 640px;
+}
+
+.pr-banner-link {
+  font-size: 13px;
+  color: var(--rc-yellow);
+  border-bottom: 2px solid var(--rc-yellow);
+  white-space: nowrap;
+}
+
+.pr-banner-link:hover {
+  color: var(--rc-white);
+  border-bottom-color: var(--rc-white);
+}
+
+@media (max-width: 480px) {
+  .pr-page { padding: 10px; gap: 12px; }
+  .pr-banner-head { padding: 10px 12px; }
+  .pr-banner-title { font-size: 10px; }
+  .pr-banner-body { padding: 12px; }
+  .pr-banner-body p { font-size: 13px; }
+}

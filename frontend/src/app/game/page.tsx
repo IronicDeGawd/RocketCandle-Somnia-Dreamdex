@@ -29,6 +29,7 @@ import Navbar from "@/components/layout/Navbar";
 import NotificationSystem, {
   useNotifications,
 } from "@/components/ui/NotificationSystem";
+import "../game.css";
 
 // Dynamically import PhaserGame to avoid SSR issues
 const TradingSetup = dynamic(
@@ -399,75 +400,58 @@ export default function GamePage() {
       {/* Navigation Bar */}
       <Navbar onNavigate={handleNavigation} />
 
-      <div
-        className="min-h-screen text-white p-4"
-        style={{ paddingTop: "100px" }}
-      >
-        {/* Notification System */}
-        <NotificationSystem
-          notifications={notifications}
-          onRemove={removeNotification}
+      <NotificationSystem
+        notifications={notifications}
+        onRemove={removeNotification}
+      />
+
+      <div className="gc-page">
+        {/*
+          Document order: status bar, frame, controls, then everything else -
+          all three live inside the cabinet PhaserGame renders, so from here
+          it is just the cabinet followed by the footer strip below it.
+        */}
+        <PhaserGame
+          onGameComplete={handleGameComplete}
+          tradingSlot={<TradingSetup symbol="SOMI:USDso" />}
         />
 
-        {/* Game Container */}
-        <div className="flex justify-center">
-          <div className="relative">
-            <PhaserGame onGameComplete={handleGameComplete} />
-          </div>
-        </div>
-
-        {/* Turning real trading on. Mounted alongside the game so the bridge
-            it builds is available to the running scenes. */}
-        <TradingSetup symbol="SOMI:USDso" />
-        {/* Header */}
-        <header className="game-header">
-          <div className="game-header-content">
-            <div className="game-title-section">
-              <h1 className="game-title">🚀 Rocket Candle</h1>
-              <p className="game-subtitle">
-                Destroy enemies, earn WICK tokens!
-              </p>
-            </div>
-
-            <div className="game-header-stats">
-              {/* Player Info */}
-              <div className="stat-card">
-                <div className="stat-label">Player</div>
-                <div className="stat-value">{user?.displayName}</div>
+        <div className="gc-footer">
+          <div className="gc-footer-bar">
+            <div className="gc-footer-stats">
+              <div className="gc-footer-stat">
+                <span className="gc-footer-stat-label rc-pixel">PLAYER</span>
+                <span className="gc-footer-stat-value rc-mono">
+                  {user?.displayName}
+                </span>
               </div>
-
-              {/* Player Stats */}
               {playerStats && (
-                <div className="stat-card">
-                  <div className="stat-label">WICK Tokens</div>
-                  <div className="stat-value highlight">
+                <div className="gc-footer-stat">
+                  <span className="gc-footer-stat-label rc-pixel">
+                    WICK TOKENS
+                  </span>
+                  <span className="gc-footer-stat-value rc-mono gc-gain">
                     {playerStats.totalTokens.toFixed(2)}
-                  </div>
+                  </span>
                 </div>
               )}
-
-              {/* Back Button */}
-              <button onClick={() => router.push("/")} className="btn btn-back">
-                ← Back
-              </button>
             </div>
+
+            <button
+              onClick={() => router.push("/")}
+              className="rc-btn"
+              type="button"
+            >
+              ← BACK
+            </button>
           </div>
-        </header>
-        {/* Game Instructions */}
-        <div className="game-instructions">
-          <h3 className="instructions-title">🎮 How to Play</h3>
-          <div className="instructions-content">
-            <p className="mb-2">
-              <strong>Controls:</strong> W/S keys to adjust angle, A/D keys to
-              adjust power, SPACE to launch rocket
-            </p>
-            <p>
-              Destroy all enemies to complete each level. You have 3 attempts
-              per level.
-              {isAuthenticated &&
-                " Your scores will be saved to the blockchain!"}
-            </p>
-          </div>
+
+          <p className="gc-footer-how">
+            <strong>Controls:</strong> W/S adjust power, A/D adjust angle,
+            SPACE launches. Destroy every enemy to clear a level - you get 3
+            attempts per level.
+            {isAuthenticated && " Scores are saved to the blockchain."}
+          </p>
         </div>
       </div>
     </>

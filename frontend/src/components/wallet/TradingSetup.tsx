@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSessionKey } from "@/hooks/useSessionKey";
 import { useTradingSession } from "@/hooks/useTradingSession";
+import "@/app/trading.css";
 
 /**
  * Turning real trading on, and taking it back off.
@@ -10,6 +11,9 @@ import { useTradingSession } from "@/hooks/useTradingSession";
  * Everything the player agrees to is stated before they agree to it: what the
  * key can do, what it cannot, what a round trip costs, and how to get the money
  * out again.
+ *
+ * Gamers first: this panel is a door, not a wall. It starts closed and a
+ * player who never opens it never sees a form.
  */
 
 const STEP_LABELS: Record<string, string> = {
@@ -20,6 +24,15 @@ const STEP_LABELS: Record<string, string> = {
   revoking: "Revoking...",
 };
 
+// The order the four setup steps happen in, so progress can be drawn even
+// though "approving" is skipped when the pool already has enough allowance.
+const SETUP_STEPS: { key: string; label: string }[] = [
+  { key: "vault-mode", label: STEP_LABELS["vault-mode"] },
+  { key: "approving", label: STEP_LABELS.approving },
+  { key: "depositing", label: STEP_LABELS.depositing },
+  { key: "granting", label: STEP_LABELS.granting },
+];
+
 export interface TradingSetupProps {
   symbol: string;
 }
@@ -28,6 +41,7 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
   const { sessionKey, authorized, step, error, enable, revoke, withdrawAll } =
     useSessionKey();
   const { bridge, snapshot, refresh } = useTradingSession(symbol);
+  const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("2");
   const [roundTripCost, setRoundTripCost] = useState<number | null>(null);
   const [stopTerms, setStopTerms] = useState<{
@@ -117,121 +131,290 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
   }, [enable, refresh, symbol, amount]);
 
   const busy = step !== "idle" && step !== "ready";
+  const setupIndex = SETUP_STEPS.findIndex((s) => s.key === step);
+  const showSetupProgress = !authorized && setupIndex !== -1;
+  const hasOpenStop = Boolean(bridge?.canRestStop && snapshot?.open);
+
+  const enableLabel = busy
+    ? STEP_LABELS[step] ?? "Working..."
+    : error
+      ? "Try again"
+      : "Enable trading";
+
+  /**
+   * The door belongs at the entrance to real money, not in front of it.
+   *
+   * Before trading is enabled this panel is genuinely optional and folds away.
+   * Once a key is authorised - and certainly once a position is open - folding
+   * it away would hide the stop controls and the running profit and loss
+   * behind a box captioned "optional", while the market keeps moving. So from
+   * that point on it stays open and the toggle disappears.
+   */
+  const holdsSomethingReal = authorized || Boolean(snapshot?.open);
+  const expanded = open || holdsSomethingReal;
 
   return (
-    <section className="trading-setup">
-      <h3>Play for keeps</h3>
-
-      <p className="trading-setup-blurb">
-        Your stake buys the token you are playing, for real, on DreamDEX. It
-        sells back when the run ends, and you can eject at any time with{" "}
-        <kbd>E</kbd> without ending your game.
-      </p>
-
-      {!authorized ? (
-        <>
-          <label className="trading-setup-field">
-            <span>Stake (USDso)</span>
-            <input
-              type="number"
-              min="0.5"
-              step="0.5"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              disabled={busy}
-            />
-          </label>
-
-          <ul className="trading-setup-facts">
-            <li>
-              This browser gets its own trading key. It can place and cancel
-              orders and <strong>can never withdraw your money</strong>.
-            </li>
-            <li>
-              Three signatures now, then none — no wallet popups between shots.
-            </li>
-            <li>
-              If your position falls {FLOOR_DROP_PCT}%, it sells and you play
-              on. This page watches that floor while it is open, and once a
-              position exists you can also rest the same floor on the exchange
-              so it holds even with the tab closed.
-            </li>
-            <li>
-              Trading fees are zero. The only cost is the gap between the buy
-              and sell price, crossed twice
-              {roundTripCost !== null
-                ? ` — about ${roundTripCost.toFixed(4)} USDso on this stake.`
-                : "."}
-            </li>
-          </ul>
-
-          <button onClick={handleEnable} disabled={busy}>
-            {busy ? STEP_LABELS[step] ?? "Working..." : "Enable trading"}
-          </button>
-        </>
-      ) : (
-        <>
-          <p className="trading-setup-ready">
-            Trading is on. This browser&apos;s key{" "}
-            <code>{sessionKey?.address.slice(0, 10)}…</code> can trade for you,
-            and nothing else.
+    <section className="ts-root">
+      <div className="rc-panel ts-toggle-row">
+        <div className="ts-toggle-copy">
+          <h2 className="rc-pixel ts-heading">Play for keeps</h2>
+          <p className="ts-toggle-note">
+            {snapshot?.open
+              ? "A position is open. This stays visible until it closes."
+              : holdsSomethingReal
+                ? "Trading is on."
+                : "Optional. Practice needs none of this."}
           </p>
+        </div>
+        {!holdsSomethingReal && (
+          <button
+            type="button"
+            className="rc-btn rc-btn--primary"
+            aria-expanded={expanded}
+            aria-controls="trading-panel-body"
+            onClick={() => setOpen((o) => !o)}
+          >
+            {expanded ? "Close" : "Open"}
+          </button>
+        )}
+      </div>
 
-          {bridge?.canRestStop && snapshot?.open ? (
-            <div className="trading-setup-stop">
-              {stopResting ? (
-                <>
-                  <p className="trading-setup-ready">
-                    A stop is resting on the exchange. If the price falls{" "}
-                    {FLOOR_DROP_PCT}% below what you paid, your position sells
-                    itself — whether or not this page is open.
-                  </p>
-                  <button onClick={handleLiftStop} disabled={stopBusy}>
-                    {stopBusy ? "Lifting..." : "Lift the stop"}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p className="trading-setup-note">
-                    Rest your {FLOOR_DROP_PCT}% floor on the exchange itself and
-                    it keeps working with the tab closed. Costs one wallet
-                    signature
-                    {stopTerms
-                      ? ` and a ${stopTerms.deposit} STT deposit, refunded when you lift it`
-                      : ""}
-                    . It sells at whatever the book offers, within{" "}
-                    {stopTerms ? stopTerms.slippageBps / 100 : 5}% of the
-                    trigger.
-                  </p>
-                  <button onClick={handleRestStop} disabled={stopBusy}>
-                    {stopBusy ? "Resting the stop..." : "Rest my stop on chain"}
-                  </button>
-                </>
-              )}
-              {stopError ? (
-                <p className="trading-setup-error">{stopError}</p>
-              ) : null}
-            </div>
-          ) : null}
-
-          <div className="trading-setup-actions">
-            <button onClick={() => withdrawAll(symbol, amount)} disabled={busy}>
-
-              Withdraw {amount} USDso
-            </button>
-            <button onClick={() => revoke(symbol)} disabled={busy}>
-              {step === "revoking" ? "Revoking..." : "Revoke this key"}
-            </button>
+      {expanded ? (
+        <div id="trading-panel-body" className="rc-panel ts-panel">
+          <div
+            className={`rc-panel-head ${
+              (!authorized && error) || step === "revoking"
+                ? "rc-panel-head--warn"
+                : authorized
+                  ? "rc-panel-head--gain"
+                  : ""
+            }`}
+          >
+            {!authorized
+              ? error && !busy
+                ? "Setup failed"
+                : busy
+                  ? "Setting up trading"
+                  : "Set up trading"
+              : step === "revoking"
+                ? "Revoking"
+                : stopResting
+                  ? "Stop resting"
+                  : hasOpenStop
+                    ? "Position open"
+                    : "Trading on"}
           </div>
 
-          <p className="trading-setup-note">
-            Revoking stops the key immediately, on chain. Withdraw first — the
-            money is yours and only your wallet can move it.
-          </p>
-        </>
-      )}
+          <div className="ts-body">
+            <p className="ts-blurb">
+              Your stake buys the token you are playing, for real, on
+              DreamDEX. It sells back when the run ends, and you can eject at
+              any time with <span className="ts-key">E</span> without ending
+              your game.
+            </p>
 
-      {error ? <p className="trading-setup-error">{error}</p> : null}
+            {!authorized ? (
+              <>
+                <label className="ts-field">
+                  <span className="rc-pixel ts-field-label">
+                    Stake (USDso)
+                  </span>
+                  <div className="rc-well ts-stake-well">
+                    <input
+                      type="number"
+                      min="0.5"
+                      step="0.5"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      disabled={busy}
+                      className="ts-stake-input"
+                    />
+                    <span className="ts-stake-unit">USDso</span>
+                  </div>
+                </label>
+
+                {showSetupProgress ? (
+                  <>
+                    <div className="ts-steps">
+                      {SETUP_STEPS.map((s, idx) => (
+                        <div
+                          key={s.key}
+                          className={`ts-step ${
+                            idx < setupIndex
+                              ? "ts-step--done"
+                              : idx === setupIndex
+                                ? "ts-step--current rc-blink"
+                                : ""
+                          }`}
+                        >
+                          <span className="ts-step-dot" />
+                          <span>{s.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="ts-progress-track">
+                      <div
+                        className="ts-progress-fill"
+                        style={{
+                          width: `${((setupIndex + 1) / SETUP_STEPS.length) * 100}%`,
+                        }}
+                      />
+                    </div>
+                    <div className="rc-chip ts-progress-label">
+                      Step {setupIndex + 1} of {SETUP_STEPS.length}
+                    </div>
+                  </>
+                ) : error ? (
+                  <div className="ts-error-box">{error}</div>
+                ) : (
+                  <ul className="ts-facts">
+                    <li>
+                      This browser gets its own trading key. It can place and
+                      cancel orders and <strong>can never withdraw your
+                      money</strong>.
+                    </li>
+                    <li>
+                      Three signatures now, then none — no wallet popups
+                      between shots.
+                    </li>
+                    <li>
+                      If your position falls{" "}
+                      <span className="rc-mono">{FLOOR_DROP_PCT}%</span>, it
+                      sells and you play on. This page watches that floor
+                      while it is open, and once a position exists you can
+                      also rest the same floor on the exchange so it holds
+                      even with the tab closed.
+                    </li>
+                    <li>
+                      Trading fees are zero. The only cost is the gap between
+                      the buy and sell price, crossed twice
+                      {roundTripCost !== null ? (
+                        <>
+                          {" — about "}
+                          <span className="rc-mono">
+                            {roundTripCost.toFixed(4)} USDso
+                          </span>
+                          {" on this stake."}
+                        </>
+                      ) : (
+                        "."
+                      )}
+                    </li>
+                  </ul>
+                )}
+
+                <button
+                  onClick={handleEnable}
+                  disabled={busy}
+                  className="rc-btn rc-btn--primary ts-btn-full"
+                >
+                  {enableLabel}
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="ts-ready">
+                  Trading is on. This browser&apos;s key{" "}
+                  <span className="rc-mono">
+                    {sessionKey?.address.slice(0, 10)}…
+                  </span>{" "}
+                  can trade for you, and nothing else.
+                </p>
+
+                {hasOpenStop ? (
+                  <div className="ts-stop">
+                    {stopResting ? (
+                      <>
+                        <p className="ts-ready">
+                          A stop is resting on the exchange. If the price
+                          falls <span className="rc-mono">
+                            {FLOOR_DROP_PCT}%
+                          </span>{" "}
+                          below what you paid, your position sells itself —
+                          whether or not this page is open.
+                        </p>
+                        <button
+                          onClick={handleLiftStop}
+                          disabled={stopBusy}
+                          className="rc-btn ts-btn-full"
+                        >
+                          {stopBusy ? "Lifting..." : "Lift the stop"}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <p className="ts-note">
+                          Rest your <span className="rc-mono">
+                            {FLOOR_DROP_PCT}%
+                          </span>{" "}
+                          floor on the exchange itself and it keeps working
+                          with the tab closed. Costs one wallet signature
+                          {stopTerms ? (
+                            <>
+                              {" and a "}
+                              <span className="rc-mono">
+                                {stopTerms.deposit} STT
+                              </span>
+                              {" deposit, refunded when you lift it"}
+                            </>
+                          ) : (
+                            ""
+                          )}
+                          . It sells at whatever the book offers, within{" "}
+                          <span className="rc-mono">
+                            {stopTerms ? stopTerms.slippageBps / 100 : 5}%
+                          </span>{" "}
+                          of the trigger.
+                        </p>
+                        <button
+                          onClick={handleRestStop}
+                          disabled={stopBusy}
+                          className="rc-btn ts-btn-blue ts-btn-full"
+                        >
+                          {stopBusy ? "Resting the stop..." : "Rest my stop on chain"}
+                        </button>
+                      </>
+                    )}
+                    {stopError ? (
+                      <p className="ts-error">{stopError}</p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="ts-note">
+                    There is no open position to protect yet. The stop-loss
+                    control appears once you are in the market.
+                  </p>
+                )}
+
+                <div className="ts-actions">
+                  <button
+                    onClick={() => withdrawAll(symbol, amount)}
+                    disabled={busy}
+                    className="rc-btn"
+                  >
+                    Withdraw <span className="rc-mono">{amount}</span> USDso
+                  </button>
+                  <button
+                    onClick={() => revoke(symbol)}
+                    disabled={busy}
+                    className="rc-btn"
+                  >
+                    {step === "revoking" ? "Revoking..." : "Revoke this key"}
+                  </button>
+                </div>
+
+                <p className="ts-note">
+                  Revoking stops the key immediately, on chain. Withdraw
+                  first — the money is yours and only your wallet can move
+                  it.
+                </p>
+
+                {error ? <p className="ts-error">{error}</p> : null}
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

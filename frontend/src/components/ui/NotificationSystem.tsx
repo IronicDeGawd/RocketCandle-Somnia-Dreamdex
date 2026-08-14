@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
+import "./notifications.css";
 
 export interface Notification {
   id: string;
@@ -15,6 +16,12 @@ interface NotificationSystemProps {
   onRemove: (id: string) => void;
 }
 
+// A single run can fire up to eight of these back to back (submit, sign,
+// confirm, settle...). Stacking all eight on screen would bury the game
+// frame, so only the most recent three are ever drawn; everything older is
+// folded into a one-line "+N more" counter until it clears.
+const MAX_VISIBLE_TOASTS = 3;
+
 const NotificationSystem: React.FC<NotificationSystemProps> = ({
   notifications,
   onRemove,
@@ -24,7 +31,7 @@ const NotificationSystem: React.FC<NotificationSystemProps> = ({
 
   const removeNotification = useCallback((id: string) => {
     setRemovingNotifications(prev => [...prev, id]);
-    
+
     setTimeout(() => {
       onRemove(id);
       setRemovingNotifications(prev => prev.filter(notifId => notifId !== id));
@@ -51,31 +58,31 @@ const NotificationSystem: React.FC<NotificationSystemProps> = ({
   const getNotificationIcon = (type: Notification['type']) => {
     switch (type) {
       case 'success':
-        return '✅';
+        return '✓';
       case 'error':
-        return '❌';
+        return '✕';
       case 'warning':
-        return '⚠️';
+        return '!';
       case 'info':
-        return 'ℹ️';
+        return 'i';
       default:
-        return 'ℹ️';
+        return 'i';
     }
   };
 
   const getNotificationClass = (type: Notification['type']) => {
-    const baseClass = 'notification-item';
+    const baseClass = 'rc-toast';
     switch (type) {
       case 'success':
-        return `${baseClass} notification-success`;
+        return `${baseClass} rc-toast--success`;
       case 'error':
-        return `${baseClass} notification-error`;
+        return `${baseClass} rc-toast--error`;
       case 'warning':
-        return `${baseClass} notification-warning`;
+        return `${baseClass} rc-toast--warning`;
       case 'info':
-        return `${baseClass} notification-info`;
+        return `${baseClass} rc-toast--info`;
       default:
-        return `${baseClass} notification-info`;
+        return `${baseClass} rc-toast--info`;
     }
   };
 
@@ -83,35 +90,41 @@ const NotificationSystem: React.FC<NotificationSystemProps> = ({
     return null;
   }
 
+  const shown = notifications.slice(0, MAX_VISIBLE_TOASTS);
+  const overflowCount = notifications.length - shown.length;
+
   return (
-    <div className="game-notifications-container">
-      {notifications.map((notification) => (
+    <div className="rc-toast-stack" role="status" aria-live="polite">
+      {shown.map((notification) => (
         <div
           key={notification.id}
+          role={notification.type === 'error' ? 'alert' : 'status'}
           className={`
             ${getNotificationClass(notification.type)}
-            ${visibleNotifications.includes(notification.id) ? 'visible' : ''}
-            ${removingNotifications.includes(notification.id) ? 'removing' : ''}
+            ${visibleNotifications.includes(notification.id) ? 'rc-toast--visible' : ''}
+            ${removingNotifications.includes(notification.id) ? 'rc-toast--removing' : ''}
           `}
         >
-          <div className="notification-content">
-            <div className="notification-icon">
-              {getNotificationIcon(notification.type)}
-            </div>
-            <div className="notification-message">
-              <div className="notification-title">{notification.title}</div>
-              <div className="notification-text">{notification.message}</div>
-            </div>
-            <button
-              onClick={() => removeNotification(notification.id)}
-              className="notification-close"
-              aria-label="Close notification"
-            >
-              ✕
-            </button>
+          <div className="rc-toast-icon rc-pixel" aria-hidden="true">
+            {getNotificationIcon(notification.type)}
           </div>
+          <div className="rc-toast-body">
+            <div className="rc-toast-title rc-pixel">{notification.title}</div>
+            <div className="rc-toast-text">{notification.message}</div>
+          </div>
+          <button
+            onClick={() => removeNotification(notification.id)}
+            className="rc-toast-close"
+            aria-label="Close notification"
+          >
+            ✕
+          </button>
         </div>
       ))}
+
+      {overflowCount > 0 && (
+        <div className="rc-toast-overflow rc-mono">+{overflowCount} MORE</div>
+      )}
     </div>
   );
 };
@@ -127,7 +140,7 @@ export const useNotifications = () => {
       id,
       duration: notification.duration ?? 5000, // 5 seconds default
     };
-    
+
     setNotifications(prev => [...prev, newNotification]);
     return id;
   }, []);
@@ -160,19 +173,19 @@ export const useNotifications = () => {
   // Blockchain-specific notifications
   const notifyWalletConnected = useCallback((address: string) => {
     return notifySuccess(
-      '🔗 Wallet Connected',
+      'Wallet Connected',
       `Connected to ${address.slice(0, 6)}...${address.slice(-4)}`,
       4000
     );
   }, [notifySuccess]);
 
   const notifyWalletDisconnected = useCallback(() => {
-    return notifyInfo('🔌 Wallet Disconnected', 'Your wallet has been disconnected', 3000);
+    return notifyInfo('Wallet Disconnected', 'Your wallet has been disconnected', 3000);
   }, [notifyInfo]);
 
   const notifyNetworkError = useCallback(() => {
     return notifyError(
-      '🌐 Network Error',
+      'Network Error',
       'Please switch to Somnia Network to play the game',
       8000
     );
@@ -180,7 +193,7 @@ export const useNotifications = () => {
 
   const notifyTransactionSubmitted = useCallback((txHash: string) => {
     return notifyInfo(
-      '📤 Transaction Submitted',
+      'Transaction Submitted',
       `Transaction: ${txHash.slice(0, 8)}...${txHash.slice(-6)}`,
       6000
     );
@@ -188,7 +201,7 @@ export const useNotifications = () => {
 
   const notifyTransactionConfirmed = useCallback((txHash: string) => {
     return notifySuccess(
-      '✅ Transaction Confirmed',
+      'Transaction Confirmed',
       `Transaction: ${txHash.slice(0, 8)}...${txHash.slice(-6)}`,
       5000
     );
@@ -196,14 +209,14 @@ export const useNotifications = () => {
 
   const notifyScoreSubmitted = useCallback((score: number, tokens: number) => {
     return notifySuccess(
-      '🎮 Score Submitted!',
+      'Score Submitted!',
       `Score: ${score.toLocaleString()} | Earned: ${tokens.toFixed(2)} WICK`,
       6000
     );
   }, [notifySuccess]);
 
   const notifyGameError = useCallback((error: string) => {
-    return notifyError('🎮 Game Error', error, 6000);
+    return notifyError('Game Error', error, 6000);
   }, [notifyError]);
 
   return {

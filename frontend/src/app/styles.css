@@ -2,9 +2,9 @@
    ROCKET CANDLE - COMPREHENSIVE CONSOLIDATED STYLES
    =================================================== */
 
-/* === FONT IMPORTS === */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap");
+/* The two faces this file used to fetch are no longer used anywhere. The
+   design's three faces are served by the app itself, so nothing here needs a
+   third-party request - and an @import blocks rendering until it answers. */
 @import "tailwindcss";
 
 /* === RESET & BASE STYLES === */
