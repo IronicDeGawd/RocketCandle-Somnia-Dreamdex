@@ -189,14 +189,20 @@
 }
 
 /* The same hard-stepped scanline wash used site-wide on the body, repeated
-   over the frame itself so the game surface reads as part of the same CRT
-   language rather than a plain rectangle cut into it. Purely decorative -
-   it sits above the canvas but below every HUD readout. */
+   over the frame so the game surface reads as part of the same CRT language
+   rather than a plain rectangle cut into it. Purely decorative - it sits above
+   the canvas but below every HUD readout.
+
+   Deliberately lighter than the page's own wash rather than heavier. On the
+   page the wash falls on flat colour; here it falls on text and sprites the
+   player has to read, including everything the game still draws itself - the
+   menu, the level banner, the score popups. At the mock's weight it striped
+   all of them, because the mock had no live text underneath to check against. */
 .gc-scanlines {
   position: absolute;
   inset: 0;
   background-image: linear-gradient(
-    rgba(20, 22, 26, 0.3) 2px,
+    rgba(20, 22, 26, 0.12) 2px,
     transparent 2px
   );
   background-size: 100% 4px;

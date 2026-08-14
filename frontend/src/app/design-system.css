@@ -1,9 +1,13 @@
+/* Tailwind supplies the base reset and the handful of utility classes still
+   used in markup. It lives here because this is now the only global
+   stylesheet - the two it replaced carried 3,895 lines of the previous look. */
+@import "tailwindcss";
+
 /* ===========================================================================
    Rocket Candle — design system
    ---------------------------------------------------------------------------
    The retro-console language: five colours, three typefaces, and one surface
-   rule. Imported last so it wins over the older stylesheets while the screens
-   are rebuilt one at a time.
+   rule. This is the only global stylesheet; the two it replaced are gone.
 
    The surface rule is the whole look, and it is worth stating once: every
    raised thing has a 4px ink border, no corner radius at all, and a hard
@@ -71,89 +75,10 @@
   50%, 100% { opacity: 0.15; }
 }
 
-/* ---------------------------------------------------------------------------
-   Overriding the previous look
-   ---------------------------------------------------------------------------
-   The old stylesheets are still loaded and still carry indigo, purple, gold,
-   frosted glass and rounded corners. Rather than leave half the app looking
-   like the old design while screens are rebuilt one by one, the legacy tokens
-   are remapped onto the new palette here. Screens that have not been rebuilt
-   yet come out in the right colours with the wrong layout, which is a far
-   better intermediate state than the reverse.
-   --------------------------------------------------------------------------- */
-
-:root {
-  --primary-blue: var(--rc-blue);
-  --primary-blue-dark: var(--rc-ink);
-  --primary-blue-light: var(--rc-blue);
-  --primary-purple: var(--rc-red);
-  --primary-purple-dark: var(--rc-red);
-
-  --accent-gold: var(--rc-yellow);
-  --accent-orange: var(--rc-red);
-  --accent-coral: var(--rc-red);
-  --accent-teal: var(--rc-blue);
-  --accent-blue: var(--rc-blue);
-
-  --success-green: var(--rc-yellow);
-  --success-green-dark: var(--rc-yellow);
-  --success-green-darker: var(--rc-yellow);
-  --warning-yellow: var(--rc-yellow);
-  --error-red: var(--rc-red);
-  --info-blue: var(--rc-blue);
-
-  --bg-primary: var(--rc-base);
-  --bg-secondary: var(--rc-base);
-  --bg-tertiary: var(--rc-base);
-  --bg-quaternary: var(--rc-base);
-  --bg-game: var(--rc-base);
-  --bg-card: var(--rc-surface);
-  --bg-card-hover: var(--rc-surface);
-
-  /* Glass becomes solid. The old values were translucent white; leaving them
-     translucent would let the scanlines show through every card and turn the
-     whole page into moire. */
-  --glass-bg: var(--rc-surface);
-  --glass-bg-hover: var(--rc-surface);
-  --glass-bg-strong: var(--rc-surface);
-  --glass-border: var(--rc-ink);
-  --glass-border-hover: var(--rc-ink);
-  --glass-border-strong: var(--rc-ink);
-
-  --text-primary: var(--rc-text);
-  --text-secondary: var(--rc-text);
-  --text-tertiary: var(--rc-text-soft);
-  --text-muted: var(--rc-text-soft);
-  --text-disabled: var(--rc-text-faint);
-  --text-address: var(--rc-blue);
-  --text-rank: var(--rc-yellow);
-  --text-score: var(--rc-yellow);
-
-  --font-family-primary: var(--rc-font-sans);
-  --font-family-secondary: var(--rc-font-sans);
-  --font-family-mono: var(--rc-font-mono);
-
-  /* The previous display face is gone. Anything still asking for it by name
-     gets the pixel face rather than falling through to a system default. */
-  --font-pixelify-sans: var(--font-press-start);
+html {
+  scroll-behavior: smooth;
 }
 
-/* Nothing in this language has rounded corners or blurred edges. Applied
-   broadly and deliberately: it is faster and more reliable than hunting every
-   radius through 3,900 lines of older CSS, and there is no case where a
-   rounded corner is wanted. */
-*,
-*::before,
-*::after {
-  border-radius: 0 !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-/* Deliberately more specific than a bare `body`. The stylesheets this replaces
-   also style the body, and they are bundled after this file, so an equally
-   specific rule here silently loses - which is exactly how the old navy
-   gradient survived a whole redesign. */
 html body {
   background: var(--rc-base);
   /* The wash sits on the body rather than a fixed overlay so it scrolls with

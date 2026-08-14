@@ -38,7 +38,7 @@ export default function LandingPage() {
       {/* Navigation Bar */}
       <Navbar onNavigate={handleNavigation} />
 
-      <div className="lp-page pt-20">
+      <div className="lp-page">
         {/* Hero, feature strip and how-to-play, framed as one console */}
         <div className="lp-console">
           <HeroSection

@@ -1,8 +1,5 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Instrument_Sans, Press_Start_2P } from "next/font/google";
-import "./styles.css";
-import "./globals.css";
-// Last, so the new language wins over the stylesheets it is replacing.
 import "./design-system.css";
 import { Providers } from "./providers";
 
