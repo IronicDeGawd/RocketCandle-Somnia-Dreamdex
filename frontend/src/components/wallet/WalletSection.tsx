@@ -69,7 +69,7 @@ const WalletSection = ({ onStartGame }: WalletSectionProps) => {
         </div>
       ) : (
         <div className="lp-cta-note rc-mono">
-          Practice records nothing. Connecting adds scores and stakes.
+          Practice is two levels and costs nothing. A full run means buying in.
         </div>
       )}
     </div>

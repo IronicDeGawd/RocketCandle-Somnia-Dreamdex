@@ -1,7 +1,64 @@
 const HowToPlaySection = () => {
   return (
     <section className="lp-htp">
-      <h2 className="lp-htp-title rc-pixel">HOW TO PLAY</h2>
+      <h2 className="lp-htp-title rc-pixel">HOW A RUN WORKS</h2>
+
+      {/* The four steps in order. Numbered because this genuinely is a
+          sequence - each step needs the one before it to have happened. */}
+      <ol className="lp-run">
+        <li className="lp-run-step">
+          <span className="lp-run-num rc-pixel">01</span>
+          <div className="lp-run-body">
+            <h3 className="lp-run-title rc-pixel">PICK A PAIR</h3>
+            <p className="lp-run-copy">
+              This one choice decides everything: its real price history
+              becomes the walls you shoot over, and its live order flow shakes
+              the field while you aim. A stablecoin makes flat, gentle ground.
+              Bitcoin throws up cliffs.
+            </p>
+          </div>
+        </li>
+        <li className="lp-run-step">
+          <span className="lp-run-num rc-pixel">02</span>
+          <div className="lp-run-body">
+            <h3 className="lp-run-title rc-pixel">BUY IN</h3>
+            <p className="lp-run-copy">
+              Your stake buys that pair, for real, on DreamDEX. This is the
+              start button — and how much you hold is how far your rocket
+              reaches. A floor sits ten percent below what you paid, and you
+              can rest it on the exchange so it holds even with the tab shut.
+            </p>
+          </div>
+        </li>
+        <li className="lp-run-step">
+          <span className="lp-run-num rc-pixel">03</span>
+          <div className="lp-run-body">
+            <h3 className="lp-run-title rc-pixel">FIRE, AND FEEL THE MARKET</h3>
+            <p className="lp-run-copy">
+              A big trade prints and the whole field shudders. A widening
+              spread pushes your rocket sideways. When the money resting at
+              the best prices thins out, your blasts reach further. And if the
+              price breaks the level&apos;s own high or low, a wall comes down
+              in front of you.
+            </p>
+          </div>
+        </li>
+        <li className="lp-run-step">
+          <span className="lp-run-num rc-pixel">04</span>
+          <div className="lp-run-body">
+            <h3 className="lp-run-title rc-pixel">CASH OUT OR PLAY ON</h3>
+            <p className="lp-run-copy">
+              <span className="lp-key rc-pixel">F</span> buys more of the same
+              pair and hits harder.{" "}
+              <span className="lp-key rc-pixel">E</span> sells out and you keep
+              playing at base strength — cashing out never ends your run. Seven
+              levels finished posts your score and earns WICK.
+            </p>
+          </div>
+        </li>
+      </ol>
+
+      <h2 className="lp-htp-title rc-pixel">CONTROLS AND SCORING</h2>
 
       <div className="lp-htp-grid">
         {/* Controls */}

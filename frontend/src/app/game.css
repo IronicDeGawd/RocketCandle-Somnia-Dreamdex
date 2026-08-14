@@ -674,3 +674,91 @@
   opacity: 0.4;
   pointer-events: none;
 }
+
+/* --- Market strip --------------------------------------------------------- */
+/* The price line the run was cut from, under the cabinet. Not part of the
+   frame: the design keeps every chart off the play field, and this sits on
+   the page as corroboration rather than as a readout. */
+
+.gc-market {
+  width: 1280px;
+  max-width: 100%;
+  background: var(--rc-surface);
+  border: 4px solid var(--rc-ink);
+  box-shadow: var(--rc-shadow);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gc-market-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.gc-market-pair {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.gc-market-price {
+  font-size: 15px;
+  color: var(--rc-yellow);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Feed dropped. The line is still true, so it stays; the price is what has
+   stopped being current, so only the price dims. */
+.gc-market-price--stale {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.gc-market-well {
+  background: var(--rc-well);
+  border: 3px solid var(--rc-ink);
+  padding: 8px;
+}
+
+.gc-market-chart {
+  display: block;
+}
+
+.gc-market-line {
+  fill: none;
+  stroke: var(--rc-yellow);
+  stroke-width: 3;
+  /* preserveAspectRatio="none" stretches the stroke horizontally; without
+     this the joins between segments show as notches. */
+  vector-effect: non-scaling-stroke;
+}
+
+.gc-market-marker {
+  fill: var(--rc-red);
+  /* Low enough that the line stays the subject and the marker reads as a
+     region behind it, rather than as a filled area chart of its own. */
+  opacity: 0.2;
+}
+
+.gc-market-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.gc-market-legend {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.gc-market-swatch {
+  width: 8px;
+  height: 8px;
+  background: var(--rc-red);
+  flex: none;
+}

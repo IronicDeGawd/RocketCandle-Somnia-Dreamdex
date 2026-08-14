@@ -111,6 +111,9 @@ export class GameScene extends Phaser.Scene {
       position: null,
       orders: null,
       fees: null,
+      marketSeries: null,
+      currentPrice: null,
+      marketFeedStatus: "connecting",
     };
   }
 
@@ -152,6 +155,9 @@ export class GameScene extends Phaser.Scene {
     }
     this.marketFeedStatus = "connecting";
     this.explosionSize = this.baseExplosionSize;
+    // Forget which level the published price line was built for, or a replay
+    // would keep showing the previous run's line.
+    this.hudSeriesLevel = null;
   }
 
   create() {
@@ -1132,6 +1138,47 @@ export class GameScene extends Phaser.Scene {
    *
    * @returns {string} caption for the HUD
    */
+  /**
+   * The whole run's price line, and where the current level sits on it.
+   *
+   * Built once per level rather than per frame: the closes never change, and
+   * the only thing that moves is which slice is marked. Practice runs get
+   * nothing, so the strip stays hidden there.
+   *
+   * @returns {object|null} series, the current level's span, and provenance
+   */
+  describeMarketSeries() {
+    if (!this.marketRun || !Array.isArray(this.candlestickData)) return null;
+    if (typeof window !== "undefined" && window.rocketCandleGame?.practiceMode) {
+      return null;
+    }
+
+    const series = [];
+    let from = 0;
+    let to = 0;
+
+    this.candlestickData.forEach((level, index) => {
+      if (index === this.currentLevel) from = series.length;
+      (level.candlesticks || []).forEach((candle) => series.push(candle.close));
+      if (index === this.currentLevel) to = series.length - 1;
+    });
+
+    if (series.length < 2) return null;
+
+    const level = this.candlestickData[this.currentLevel];
+
+    return {
+      series,
+      from,
+      to,
+      symbol: this.marketRun.market.symbol,
+      label: this.marketRun.market.label,
+      interval: level?.interval ?? "",
+      windowFrom: level?.window?.from ?? null,
+      mirrored: Boolean(this.marketRun.mirrored),
+    };
+  }
+
   describeCurrentTerrain() {
     const level = this.candlestickData[this.currentLevel];
     if (!level) return "";
@@ -1173,6 +1220,16 @@ export class GameScene extends Phaser.Scene {
     this.hudState.enemiesLeft = this.enemiesRemaining;
     this.hudState.terrainCaption = this.describeCurrentTerrain();
     this.hudState.canLaunch = this.canLaunch;
+
+    // The price line is rebuilt only when the level changes - it is the same
+    // closes every frame otherwise, and the strip memoises on the level.
+    if (this.hudSeriesLevel !== this.currentLevel) {
+      this.hudState.marketSeries = this.describeMarketSeries();
+      this.hudSeriesLevel = this.currentLevel;
+    }
+
+    this.hudState.currentPrice = this.lastTrade ? this.lastTrade.price : null;
+    this.hudState.marketFeedStatus = this.marketFeedStatus;
 
     this.publishHud();
   }
