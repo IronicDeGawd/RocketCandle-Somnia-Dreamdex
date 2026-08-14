@@ -32,7 +32,7 @@ export class EndGameScene extends Phaser.Scene {
 
     // Initialize sounds
     this.sounds = {
-      menu: this.sound.add("menu-sound", { volume: 0.3, loop: true }),
+      menu: this.oneSound("menu-sound", { volume: 0.3, loop: true }),
     };
 
 
@@ -130,6 +130,16 @@ export class EndGameScene extends Phaser.Scene {
    * Draw text with a hard, un-blurred offset shadow instead of a stroke
    * glow - the canvas equivalent of the design's `text-shadow:5px 5px 0`.
    */
+  /**
+   * One sound per key, however many times this scene is entered. Phaser keeps
+   * every sound ever added on the game-wide manager, so re-entering a scene
+   * without removing the previous instance layers another copy of the loop.
+   */
+  oneSound(key, config) {
+    this.sound.removeByKey(key);
+    return this.sound.add(key, config);
+  }
+
   createHardShadowText(x, y, text, style) {
     this.add
       .text(x + 5, y + 5, text, { ...style, color: "#14161A" })

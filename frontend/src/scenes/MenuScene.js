@@ -31,7 +31,7 @@ export class MenuScene extends Phaser.Scene {
 
     // Initialize sounds
     this.sounds = {
-      menu: this.sound.add("menu-sound", { volume: 0.3, loop: true }),
+      menu: this.oneSound("menu-sound", { volume: 0.3, loop: true }),
     };
 
 
@@ -54,6 +54,7 @@ export class MenuScene extends Phaser.Scene {
 
     // Let the player choose which market they play
     this.createMarketPicker();
+    this.setUpMenuKeys();
 
     // Create play button
     this.playButton = this.createPixelButton(
@@ -88,6 +89,38 @@ export class MenuScene extends Phaser.Scene {
    * Draw text with a hard, un-blurred offset shadow instead of a stroke
    * glow - the canvas equivalent of the design's `text-shadow:4px 4px 0`.
    */
+  /**
+   * Let the keyboard start a run.
+   *
+   * Every other part of this game is played on the keyboard, but the menu
+   * could only be got past with a pointer - so a keyboard-only player could
+   * reach the game and never enter it. Enter or space starts; left and right
+   * move between markets.
+   */
+  setUpMenuKeys() {
+    this.input.keyboard.on("keydown-ENTER", () => this.startGame());
+    this.input.keyboard.on("keydown-SPACE", () => this.startGame());
+
+    const step = (delta) => {
+      const ids = GAME_MARKETS.map((m) => m.id);
+      const current = ids.indexOf(this.selectedMarketId);
+      const next = (current + delta + ids.length) % ids.length;
+      this.selectMarket(ids[next]);
+    };
+    this.input.keyboard.on("keydown-LEFT", () => step(-1));
+    this.input.keyboard.on("keydown-RIGHT", () => step(1));
+  }
+
+  /**
+   * One sound per key, however many times this scene is entered. Phaser keeps
+   * every sound ever added on the game-wide manager, so re-entering a scene
+   * without removing the previous instance layers another copy of the loop.
+   */
+  oneSound(key, config) {
+    this.sound.removeByKey(key);
+    return this.sound.add(key, config);
+  }
+
   createHardShadowText(x, y, text, style) {
     this.add
       .text(x + 4, y + 4, text, { ...style, color: "#14161A" })

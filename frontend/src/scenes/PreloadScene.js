@@ -1,6 +1,7 @@
 import { AssetGenerator } from "@/utils/AssetGenerator.js";
 import { MarketDataProvider } from "@/data/MarketDataProvider.js";
 import { DEFAULT_MARKET_ID } from "@/data/DreamdexMarketFeed.js";
+import { DesignTextures } from "@/utils/DesignTextures.js";
 
 // Redesign palette - flat, no gradients, no blur. See context/redesign board,
 // section "scenes" (LOADING / MENU / END OF RUN).
@@ -155,6 +156,7 @@ export class PreloadScene extends Phaser.Scene {
 
     // Generate only fallback assets that we still need (blocks, particles, etc.)
     AssetGenerator.generateAssets(this);
+
   }
 
   /**
@@ -232,6 +234,11 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   create() {
+    // Repaint the loaded art in the design language. Deliberately here rather
+    // than in preload: the images are only in the cache once loading finishes,
+    // and anything painted earlier would be overwritten by the loader.
+    DesignTextures.paintAll(this);
+
     this.loadMarketRun();
 
     // Wait a moment to show the loading screen, then transition with fade

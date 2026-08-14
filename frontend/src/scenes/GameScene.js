@@ -2,6 +2,21 @@ import { MarketDataProvider } from "@/data/MarketDataProvider.js";
 import { DreamdexLiveFeed } from "@/data/DreamdexLiveFeed.js";
 import { KeyboardTimerController } from "@/utils/KeyboardTimerController.js";
 
+// The design's three faces, named once so no text in this scene can quietly
+// fall back to a system font. Pixel for labels and numbers, mono for data,
+// prose for sentences.
+const PIXEL_FONT = '"Press Start 2P", monospace';
+const MONO_FONT = '"Geist Mono", monospace';
+
+// Palette, matching design-system.css. Canvas cannot read CSS variables.
+const RC_INK = 0x14161a;
+const RC_BASE = 0x2a2d34;
+const RC_WELL = 0x1b1e23;
+const RC_RED = 0xe94f37;
+const RC_YELLOW = 0xf6f740;
+const RC_BLUE = 0x3f88c5;
+
+
 /**
  * GameScene - Main gameplay scene for Rocket Candle
  * Handles all game mechanics, physics, and player interactions
@@ -152,10 +167,9 @@ export class GameScene extends Phaser.Scene {
 
     // Initialize sounds
     this.sounds = {
-      enemyDestroy: this.sound.add("enemy-destroy", { volume: 0.5 }),
-      levelComplete: this.sound.add("level-complete", { volume: 0.6 }),
-      gameOver: this.sound.add("game-over", { volume: 0.7 }),
-      gameLevel: this.sound.add("level-complete", { volume: 0.3, loop: true }),
+      enemyDestroy: this.oneSound("enemy-destroy", { volume: 0.5 }),
+      gameOver: this.oneSound("game-over", { volume: 0.7 }),
+      gameLevel: this.oneSound("level-complete", { volume: 0.3, loop: true }),
     };
 
     // Set camera bounds
@@ -191,12 +205,7 @@ export class GameScene extends Phaser.Scene {
     // Start background music for game level (delay to ensure no overlap)
     // Check if game music is already playing globally to prevent multiple instances
     this.time.delayedCall(100, () => {
-      const globalSounds = this.sound.sounds;
-      const isGameMusicPlaying = globalSounds.some(sound => 
-        sound.key === "level-complete" && sound.isPlaying
-      );
-      
-      if (!isGameMusicPlaying && this.sounds.gameLevel) {
+      if (this.sounds.gameLevel && !this.sounds.gameLevel.isPlaying) {
         this.sounds.gameLevel.play();
       }
     });
@@ -442,6 +451,19 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * One sound per key, however many times this scene is entered.
+   *
+   * Phaser keeps every sound ever added on the game-wide manager, and create()
+   * runs again on every replay. Adding without removing first left one more
+   * copy of the same loop playing after each round, so the music thickened as
+   * you played instead of repeating.
+   */
+  oneSound(key, config) {
+    this.sound.removeByKey(key);
+    return this.sound.add(key, config);
+  }
+
   registerControls() {
     if (typeof window === "undefined" || !window.rocketCandleGame) return;
 
@@ -659,7 +681,7 @@ export class GameScene extends Phaser.Scene {
       .text(600, 150, message, {
         fontSize: "18px",
         fill: "#ffd166",
-        fontFamily: '"Press Start 2P", monospace',
+        fontFamily: PIXEL_FONT,
         stroke: "#000000",
         strokeThickness: 4,
       })
@@ -899,7 +921,7 @@ export class GameScene extends Phaser.Scene {
       .text(600, 120, message, {
         fontSize: "20px",
         fill: wasResistance ? "#4ade80" : "#f87171",
-        fontFamily: '"Press Start 2P", monospace',
+        fontFamily: PIXEL_FONT,
         stroke: "#000000",
         strokeThickness: 4,
       })
@@ -1968,9 +1990,9 @@ export class GameScene extends Phaser.Scene {
     // Add score popup effect
     const scoreText = this.add
       .text(enemy.x, enemy.y - 20, "+10", {
-        fontSize: "16px",
-        fill: "#aa00ff",
-        fontStyle: "bold",
+        fontFamily: PIXEL_FONT,
+        fontSize: "14px",
+        color: "#F6F740",
       })
       .setOrigin(0.5);
 
@@ -1995,9 +2017,8 @@ export class GameScene extends Phaser.Scene {
    */
   completeLevel() {
     // Play level complete sound
-    if (this.sounds.levelComplete) {
-      this.sounds.levelComplete.play();
-    }
+    // No sting here. What used to play was the background track itself, a
+    // second copy layered over the one already looping.
 
     // Double-check enemy count from actual enemies still in the scene
     const actualEnemiesRemaining = this.enemies.children.entries.length;
@@ -2095,7 +2116,7 @@ export class GameScene extends Phaser.Scene {
         fontSize: "54px", // Increased from 48px
         fill: "#ffffff",
         fontStyle: "bold",
-        fontFamily: '"Press Start 2P", monospace',
+        fontFamily: PIXEL_FONT,
       })
       .setOrigin(0.5);
 
@@ -2104,7 +2125,7 @@ export class GameScene extends Phaser.Scene {
       .text(600, 310, levelData.name, {
         fontSize: "28px", // Increased from 24px
         fill: "#ffaa00",
-        fontFamily: '"Press Start 2P", monospace',
+        fontFamily: PIXEL_FONT,
       })
       .setOrigin(0.5);
 
@@ -2113,7 +2134,7 @@ export class GameScene extends Phaser.Scene {
       .text(600, 350, `Difficulty: ${levelData.difficulty}`, {
         fontSize: "20px", // Increased from 18px
         fill: "#aaaaaa",
-        fontFamily: '"Press Start 2P", monospace',
+        fontFamily: PIXEL_FONT,
       })
       .setOrigin(0.5);
 
@@ -2440,10 +2461,11 @@ export class GameScene extends Phaser.Scene {
 
     const messageText = this.add
       .text(600, 300, `${message}\n${details}`, {
-        fontSize: "20px",
-        fill: "#ffaa00",
-        fontFamily: "Arial",
+        fontFamily: PIXEL_FONT,
+        fontSize: "13px",
+        color: "#E94F37",
         align: "center",
+        lineSpacing: 10,
       })
       .setOrigin(0.5)
       .setAlpha(0);
