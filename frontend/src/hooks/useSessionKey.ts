@@ -10,7 +10,7 @@ import {
 } from "wagmi";
 import { getWalletClient } from "wagmi/actions";
 import { somniaNetwork, wagmiConfig } from "@/lib/wagmi";
-import { parseUnits } from "viem";
+import { formatEther, parseEther, parseUnits } from "viem";
 
 import {
   ERC20_ABI,
@@ -37,9 +37,25 @@ import {
  * cancel orders against it. The key can never move the money out.
  */
 
+/*
+ * Gas for the browser key, in native STT.
+ *
+ * The key signs and sends its own order transactions, so it pays their fees
+ * itself - the player's wallet is nowhere in that path. Setup authorised the
+ * key and funded the vault but never sent it a single coin, so the very first
+ * buy-in died with "account does not exist": to the network, an address that
+ * has never paid for anything does not exist at all.
+ *
+ * FUEL covers a run's worth of orders with room to spare; FLOOR is where a key
+ * is close enough to empty that it needs topping up before the next run.
+ */
+const GAS_FUEL = parseEther("0.5");
+const GAS_FLOOR = parseEther("0.15");
+
 export type SessionStep =
   | "idle"
   | "switching-network"
+  | "fuelling"
   | "vault-mode"
   | "approving"
   | "depositing"
@@ -53,6 +69,11 @@ export interface UseSessionKey {
   step: SessionStep;
   error: string | null;
   market: MarketMeta | null;
+  /** Native STT held by the browser key, or null before it has been read. */
+  keyGas: number | null;
+  /** True when the key is too close to empty to pay for another run's orders. */
+  keyOutOfGas: boolean;
+  fuelKey: () => Promise<void>;
   enable: (symbol: string, usdsoAmount: string) => Promise<void>;
   revoke: (symbol: string) => Promise<void>;
   withdrawAll: (symbol: string, usdsoAmount: string) => Promise<void>;
@@ -73,10 +94,59 @@ export function useSessionKey(symbol?: string): UseSessionKey {
   const [step, setStep] = useState<SessionStep>("idle");
   const [error, setError] = useState<string | null>(null);
   const [market, setMarket] = useState<MarketMeta | null>(null);
+  const [keyGasRaw, setKeyGasRaw] = useState<bigint | null>(null);
 
   useEffect(() => {
     setSessionKey(peekSessionKey());
   }, []);
+
+  /** Read what the browser key holds to pay its own transaction fees with. */
+  const refreshKeyGas = useCallback(
+    async (operator: `0x${string}`) => {
+      if (!publicClient) return null;
+      const balance = await publicClient.getBalance({ address: operator });
+      setKeyGasRaw(balance);
+      return balance;
+    },
+    [publicClient]
+  );
+
+  /**
+   * Send the browser key enough native STT to pay for its own orders.
+   *
+   * Separate from enable() because a key can run dry long after setup is
+   * finished, and re-walking four signatures to fix that would be absurd.
+   */
+  const sendGas = useCallback(
+    async (
+      signer: NonNullable<typeof walletClient>,
+      operator: `0x${string}`
+    ) => {
+      const held = (await refreshKeyGas(operator)) ?? 0n;
+      if (held >= GAS_FUEL) return;
+
+      const owner = await publicClient!.getBalance({ address: address! });
+      const shortfall = GAS_FUEL - held;
+
+      if (owner < shortfall) {
+        throw new Error(
+          `Needs ${formatEther(shortfall)} STT for order fees but this ` +
+            `wallet holds ${Number(formatEther(owner)).toFixed(3)}`
+        );
+      }
+
+      setStep("fuelling");
+      const hash = await signer.sendTransaction({
+        to: operator,
+        value: shortfall,
+        account: signer.account!,
+        chain: somniaNetwork,
+      });
+      await publicClient!.waitForTransactionReceipt({ hash });
+      await refreshKeyGas(operator);
+    },
+    [publicClient, address, refreshKeyGas]
+  );
 
 
   /**
@@ -124,12 +194,13 @@ export function useSessionKey(symbol?: string): UseSessionKey {
 
       setMarket(meta);
       await refreshAuthorization(meta.pool, key.address);
+      await refreshKeyGas(key.address);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [symbol, address, publicClient, refreshAuthorization]);
+  }, [symbol, address, publicClient, refreshAuthorization, refreshKeyGas]);
 
   const enable = useCallback(
     async (symbol: string, usdsoAmount: string) => {
@@ -233,6 +304,9 @@ export function useSessionKey(symbol?: string): UseSessionKey {
           return;
         }
 
+        // 0. Fees for the key's own orders, before it is asked to place any.
+        await sendGas(signer, key.address);
+
         // 1. Fills have to settle to the vault rather than the wallet, or the
         //    session key would have nothing to trade against.
         setStep("vault-mode");
@@ -310,8 +384,45 @@ export function useSessionKey(symbol?: string): UseSessionKey {
       chainId,
       switchChainAsync,
       refreshAuthorization,
+      sendGas,
     ]
   );
+
+  /** Top up an already-authorised key that has spent its fees. */
+  const fuelKey = useCallback(async () => {
+    const key = peekSessionKey();
+    if (!key || !publicClient || !address) return;
+
+    setError(null);
+
+    let signer = walletClient;
+    if (chainId !== somniaNetwork.id || !signer) {
+      try {
+        setStep("switching-network");
+        await switchChainAsync({ chainId: somniaNetwork.id });
+        signer = await getWalletClient(wagmiConfig, {
+          chainId: somniaNetwork.id,
+        });
+      } catch {
+        setStep("idle");
+        setError(`Approve the switch to ${somniaNetwork.name}, then try again`);
+        return;
+      }
+    }
+    if (!signer) {
+      setStep("idle");
+      setError(`Your wallet is not on ${somniaNetwork.name}`);
+      return;
+    }
+
+    try {
+      await sendGas(signer, key.address);
+      setStep("ready");
+    } catch (e) {
+      setStep("idle");
+      setError((e as Error).message?.split("\n")[0] ?? "Fuelling failed");
+    }
+  }, [walletClient, publicClient, address, chainId, switchChainAsync, sendGas]);
 
   const revoke = useCallback(
     async (symbol: string) => {
@@ -387,6 +498,9 @@ export function useSessionKey(symbol?: string): UseSessionKey {
     step,
     error,
     market,
+    keyGas: keyGasRaw === null ? null : Number(formatEther(keyGasRaw)),
+    keyOutOfGas: keyGasRaw !== null && keyGasRaw < GAS_FLOOR,
+    fuelKey,
     enable,
     revoke,
     withdrawAll,

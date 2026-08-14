@@ -18,6 +18,7 @@ import "@/app/trading.css";
 
 const STEP_LABELS: Record<string, string> = {
   "switching-network": "Switching to Somnia...",
+  fuelling: "Sending the browser key its order fees...",
   "vault-mode": "Moving fills to the exchange vault...",
   approving: "Approving USDso...",
   depositing: "Depositing your stake...",
@@ -29,6 +30,7 @@ const STEP_LABELS: Record<string, string> = {
 // though "approving" is skipped when the pool already has enough allowance.
 const SETUP_STEPS: { key: string; label: string }[] = [
   { key: "switching-network", label: STEP_LABELS["switching-network"] },
+  { key: "fuelling", label: STEP_LABELS.fuelling },
   { key: "vault-mode", label: STEP_LABELS["vault-mode"] },
   { key: "approving", label: STEP_LABELS.approving },
   { key: "depositing", label: STEP_LABELS.depositing },
@@ -53,8 +55,18 @@ export default function TradingSetup({
   symbol,
   overlayUntilOpen = false,
 }: TradingSetupProps) {
-  const { sessionKey, authorized, step, error, enable, revoke, withdrawAll } =
-    useSessionKey(symbol);
+  const {
+    sessionKey,
+    authorized,
+    step,
+    error,
+    keyGas,
+    keyOutOfGas,
+    fuelKey,
+    enable,
+    revoke,
+    withdrawAll,
+  } = useSessionKey(symbol);
   const { bridge, snapshot, refresh } = useTradingSession(symbol);
   // Starts open. This panel used to be a door the player could ignore; it is
   // now the start button, so folding it away would hide the only way into a
@@ -400,7 +412,38 @@ export default function TradingSetup({
                   can trade for you, and nothing else.
                 </p>
 
-                {!snapshot?.open && underfunded ? (
+                {!snapshot?.open && keyOutOfGas ? (
+                  /*
+                   * Authorised but the key cannot pay for a transaction.
+                   *
+                   * The key sends its own orders, so it needs native STT of its
+                   * own. Setup never gave it any, and an address that has never
+                   * paid a fee does not exist as far as the network is
+                   * concerned - so the buy-in failed with "account does not
+                   * exist", which explains nothing to anybody.
+                   */
+                  <div className="ts-stop">
+                    <p className="ts-note">
+                      The browser key holds{" "}
+                      <span className="rc-mono">
+                        {keyGas !== null ? keyGas.toFixed(3) : "…"} STT
+                      </span>
+                      , which is not enough to pay for its own orders. Top it up
+                      and the buy-in opens up. Anything unspent stays in the
+                      key, and revoking is unaffected.
+                    </p>
+                    <button
+                      onClick={fuelKey}
+                      disabled={busy}
+                      className="rc-btn rc-btn--primary ts-btn-full"
+                    >
+                      {busy
+                        ? STEP_LABELS[step] ?? "Working..."
+                        : "Fund the key's order fees"}
+                    </button>
+                    {error ? <p className="ts-error">{error}</p> : null}
+                  </div>
+                ) : !snapshot?.open && underfunded ? (
                   /*
                    * Authorised but the vault cannot cover the stake.
                    *
