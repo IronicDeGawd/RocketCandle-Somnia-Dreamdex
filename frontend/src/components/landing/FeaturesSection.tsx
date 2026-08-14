@@ -37,13 +37,13 @@ const FeaturesSection = () => {
       <div className="lp-feature-col">
         <div className="lp-feature-num lp-feature-num--blue rc-pixel">03</div>
         <h3 className="lp-feature-title rc-pixel">
-          SCORES ARE
+          YOUR STAKE IS
           <br />
-          RECORDED
+          YOUR FIREPOWER
         </h3>
         <p className="lp-feature-copy">
-          Connected runs post to the weekly board and earn WICK. Practice
-          runs do not.
+          Buying into a pair is how a run starts, and the more you hold the
+          further your blasts reach.
         </p>
       </div>
     </div>

@@ -29,6 +29,8 @@ import Navbar from "@/components/layout/Navbar";
 import NotificationSystem, {
   useNotifications,
 } from "@/components/ui/NotificationSystem";
+import { useSelectedMarket } from "@/hooks/useGameHud";
+import { DEFAULT_MARKET_SYMBOL } from "@/data/DreamdexMarketFeed.js";
 
 // Dynamically import PhaserGame to avoid SSR issues
 const TradingSetup = dynamic(
@@ -75,6 +77,14 @@ export default function GamePage() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
+
+  // Buy the pair you picked. The menu inside the canvas decides which market
+  // becomes the terrain, and the panel has to trade that same one - hard-coding
+  // a symbol here let a player shoot at one market's history while holding
+  // another's token. Falls back to the market the menu itself defaults to,
+  // for the moment before it has published a choice.
+  const selectedMarket = useSelectedMarket();
+  const tradingSymbol = selectedMarket?.symbol ?? DEFAULT_MARKET_SYMBOL;
   const [gameStartTime, setGameStartTime] = useState<number>(0);
   const [isSubmittingScore, setIsSubmittingScore] = useState(false);
   const [lastGameResult, setLastGameResult] = useState<{
@@ -412,7 +422,7 @@ export default function GamePage() {
         */}
         <PhaserGame
           onGameComplete={handleGameComplete}
-          tradingSlot={<TradingSetup symbol="SOMI:USDso" />}
+          tradingSlot={<TradingSetup symbol={tradingSymbol} />}
         />
 
         <div className="gc-footer">

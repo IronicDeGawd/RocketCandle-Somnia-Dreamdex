@@ -124,6 +124,13 @@ declare global {
       hud?: import("@/hooks/useGameHud").GameHud;
       /** Registered by GameScene.js once it has booted. */
       controls?: import("@/hooks/useGameHud").GameControls;
+      /**
+       * Which pair the player picked on the menu.
+       *
+       * The picker is drawn in the canvas but the trading panel is in the
+       * page, and the panel must buy the pair that becomes the terrain.
+       */
+      selectedMarket?: import("@/hooks/useGameHud").SelectedMarket;
     };
   }
 }

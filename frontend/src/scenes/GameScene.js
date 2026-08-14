@@ -199,9 +199,19 @@ export class GameScene extends Phaser.Scene {
     // Create rocket launcher system
     this.createLauncher();
 
+    // Reset the run's counters BEFORE the level is built.
+    //
+    // This used to run last, after the barriers and enemies existed, and it
+    // wiped the enemy count they had just set - so the readout said 00 with a
+    // field full of enemies until the first kill reconciled it. Worse, the
+    // level number is reset here too, and a replay reuses the scene object:
+    // building first meant a restart generated the previous run's terrain and
+    // then labelled it level one.
+    this.initializeScene();
+
     // Generate candlestick barriers for current level
     this.generateCandlestickBarriers();
-    
+
     // Start background music for game level (delay to ensure no overlap)
     // Check if game music is already playing globally to prevent multiple instances
     this.time.delayedCall(100, () => {
@@ -218,9 +228,6 @@ export class GameScene extends Phaser.Scene {
 
     // Set up keyboard controls
     this.setupKeyboardControls();
-
-    // Initialize scene state
-    this.initializeScene();
   }
 
   /**

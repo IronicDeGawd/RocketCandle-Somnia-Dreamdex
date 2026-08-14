@@ -58,6 +58,13 @@ export interface GameHud {
   fees: number | null;
 }
 
+/** The pair chosen on the menu, which is both the terrain and what gets bought. */
+export interface SelectedMarket {
+  id: string;
+  symbol: string;
+  label: string;
+}
+
 export interface GameControls {
   setAngle: (value: number) => void;
   setPower: (value: number) => void;
@@ -115,6 +122,29 @@ function getControlsServerSnapshot(): GameControls | null {
 /** The current HUD snapshot, re-rendering whenever the scene publishes a new one. */
 export function useGameHud(): GameHud {
   return useSyncExternalStore(subscribe, getHudSnapshot, getHudServerSnapshot);
+}
+
+function getMarketSnapshot(): SelectedMarket | null {
+  if (typeof window === "undefined") return null;
+  return window.rocketCandleGame?.selectedMarket ?? null;
+}
+
+function getMarketServerSnapshot(): SelectedMarket | null {
+  return null;
+}
+
+/**
+ * Which pair the menu is pointing at, or null before it has said.
+ *
+ * Shares the "rc-hud" subscription with the HUD rather than opening a second
+ * channel, because the menu publishes on the same event.
+ */
+export function useSelectedMarket(): SelectedMarket | null {
+  return useSyncExternalStore(
+    subscribe,
+    getMarketSnapshot,
+    getMarketServerSnapshot
+  );
 }
 
 /**

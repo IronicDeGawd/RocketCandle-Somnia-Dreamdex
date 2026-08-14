@@ -223,7 +223,7 @@ export class PreloadScene extends Phaser.Scene {
 
     MarketDataProvider.generateLiveGameLevels(marketId)
       .then((run) => {
-        this.registry.set("marketRun", run);
+        this.registry.set("marketRun", MarketDataProvider.capForPractice(run));
       })
       .catch(() => {
         this.registry.set("marketRun", null);

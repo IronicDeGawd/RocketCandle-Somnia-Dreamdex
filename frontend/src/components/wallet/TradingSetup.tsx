@@ -41,7 +41,10 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
   const { sessionKey, authorized, step, error, enable, revoke, withdrawAll } =
     useSessionKey();
   const { bridge, snapshot, refresh } = useTradingSession(symbol);
-  const [open, setOpen] = useState(false);
+  // Starts open. This panel used to be a door the player could ignore; it is
+  // now the start button, so folding it away would hide the only way into a
+  // run behind a control captioned "Open".
+  const [open, setOpen] = useState(true);
   const [amount, setAmount] = useState("2");
   const [roundTripCost, setRoundTripCost] = useState<number | null>(null);
   const [stopTerms, setStopTerms] = useState<{
@@ -174,13 +177,12 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
       : "Enable trading";
 
   /**
-   * The door belongs at the entrance to real money, not in front of it.
+   * Once there is anything real here, the panel stops being collapsible.
    *
-   * Before trading is enabled this panel is genuinely optional and folds away.
-   * Once a key is authorised - and certainly once a position is open - folding
-   * it away would hide the stop controls and the running profit and loss
-   * behind a box captioned "optional", while the market keeps moving. So from
-   * that point on it stays open and the toggle disappears.
+   * A player may fold it away before they have committed anything. Once a key
+   * is authorised - and certainly once a position is open - folding it would
+   * hide the stop controls and the running profit and loss while the market
+   * kept moving, so from that point the toggle disappears.
    */
   const holdsSomethingReal = authorized || Boolean(snapshot?.open);
   const expanded = open || holdsSomethingReal;
@@ -189,13 +191,13 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
     <section className="ts-root">
       <div className="rc-panel ts-toggle-row">
         <div className="ts-toggle-copy">
-          <h2 className="rc-pixel ts-heading">Play for keeps</h2>
+          <h2 className="rc-pixel ts-heading">Buy in to play</h2>
           <p className="ts-toggle-note">
             {snapshot?.open
               ? "A position is open. This stays visible until it closes."
               : holdsSomethingReal
-                ? "Trading is on."
-                : "Optional. Practice needs none of this."}
+                ? "Trading is on. Buy in to start a run."
+                : "Buying into this pair is how a run starts."}
           </p>
         </div>
         {!holdsSomethingReal && (
@@ -239,10 +241,11 @@ export default function TradingSetup({ symbol }: TradingSetupProps) {
 
           <div className="ts-body">
             <p className="ts-blurb">
-              Your stake buys the token you are playing, for real, on
-              DreamDEX. It sells back when the run ends, and you can eject at
-              any time with <span className="ts-key">E</span> without ending
-              your game.
+              Your stake buys the pair you are about to play, for real, on
+              DreamDEX. That purchase is how a run starts, and how much you
+              hold is how far your rocket reaches. It sells back when the run
+              ends, and <span className="ts-key">E</span> ejects at any time
+              without ending your game.
             </p>
 
             {!authorized ? (
