@@ -54,7 +54,7 @@ export default function TradingSetup({
   overlayUntilOpen = false,
 }: TradingSetupProps) {
   const { sessionKey, authorized, step, error, enable, revoke, withdrawAll } =
-    useSessionKey();
+    useSessionKey(symbol);
   const { bridge, snapshot, refresh } = useTradingSession(symbol);
   // Starts open. This panel used to be a door the player could ignore; it is
   // now the start button, so folding it away would hide the only way into a

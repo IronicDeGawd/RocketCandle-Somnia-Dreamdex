@@ -58,7 +58,10 @@ export interface UseSessionKey {
   withdrawAll: (symbol: string, usdsoAmount: string) => Promise<void>;
 }
 
-export function useSessionKey(): UseSessionKey {
+/**
+ * @param symbol the market to check existing setup against, if known
+ */
+export function useSessionKey(symbol?: string): UseSessionKey {
   const { address } = useAccount();
   const chainId = useChainId();
   const publicClient = usePublicClient();
@@ -74,6 +77,7 @@ export function useSessionKey(): UseSessionKey {
   useEffect(() => {
     setSessionKey(peekSessionKey());
   }, []);
+
 
   /**
    * Ask the pool itself whether the key is authorised.
@@ -97,6 +101,35 @@ export function useSessionKey(): UseSessionKey {
     },
     [publicClient, address]
   );
+
+  /**
+   * Ask the chain whether setup is already done, on load.
+   *
+   * Authorisation was only ever checked as the last step of enable(), so a
+   * refresh forgot it entirely: a player who had already funded the vault and
+   * authorised a key was shown "Set up trading" again and had to walk the whole
+   * four-signature flow a second time to reach the buy-in.
+   */
+  useEffect(() => {
+    if (!symbol || !address || !publicClient) return;
+
+    let cancelled = false;
+
+    (async () => {
+      const key = peekSessionKey();
+      if (!key) return;
+
+      const meta = await fetchMarket(symbol).catch(() => null);
+      if (!meta || cancelled) return;
+
+      setMarket(meta);
+      await refreshAuthorization(meta.pool, key.address);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol, address, publicClient, refreshAuthorization]);
 
   const enable = useCallback(
     async (symbol: string, usdsoAmount: string) => {
