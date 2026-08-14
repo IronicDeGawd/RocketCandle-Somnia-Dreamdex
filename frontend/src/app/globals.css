@@ -132,19 +132,11 @@ body {
   line-height: var(--line-height-normal);
   font-weight: var(--font-weight-normal);
   color: var(--text-primary);
-  background: linear-gradient(
-    135deg,
-    var(--bg-primary) 0%,
-    var(--bg-secondary) 25%,
-    var(--bg-tertiary) 50%,
-    var(--bg-quaternary) 100%
-  );
   overflow-x: hidden;
   min-height: 100vh;
   position: relative;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-attachment: fixed;
 }
 
 /* === LANDING PAGE COMPONENT STYLES === */

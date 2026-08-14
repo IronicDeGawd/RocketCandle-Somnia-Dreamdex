@@ -150,7 +150,11 @@
   -webkit-backdrop-filter: none !important;
 }
 
-body {
+/* Deliberately more specific than a bare `body`. The stylesheets this replaces
+   also style the body, and they are bundled after this file, so an equally
+   specific rule here silently loses - which is exactly how the old navy
+   gradient survived a whole redesign. */
+html body {
   background: var(--rc-base);
   /* The wash sits on the body rather than a fixed overlay so it scrolls with
      the page and never covers an interactive element. */
