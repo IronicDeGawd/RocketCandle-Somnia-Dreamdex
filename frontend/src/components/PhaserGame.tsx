@@ -22,6 +22,24 @@ export default function PhaserGame({
 }: PhaserGameProps) {
   const gameRef = useRef<Phaser.Game | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Hold the completion callback in a ref so the game is built once.
+   *
+   * The page passes a fresh function on every render, and the game's setup
+   * effect used to depend on it - so any re-render of the page tore the whole
+   * Phaser instance down and built a new one. That is fatal rather than
+   * wasteful: textures are destroyed while the renderer is still drawing them,
+   * which surfaces as a null canvas deep inside Phaser. Reading through a ref
+   * keeps the callback current without the identity ever being a dependency.
+   */
+  const onCompleteRef = useRef(onGameComplete);
+  onCompleteRef.current = onGameComplete;
+
+  // Whether a run has anywhere to report to genuinely changes what the game
+  // is - practice mode derives from it - so this, unlike the identity, is a
+  // real reason to rebuild.
+  const canSubmitRuns = Boolean(onGameComplete);
   const [isLoading, setIsLoading] = useState(true);
   const { walletAddress, isAuthenticated, playerStats } = useApp();
   const hud = useGameHud();
@@ -70,8 +88,11 @@ export default function PhaserGame({
         address: walletAddress,
         // Left undefined in practice mode. A no-op stub here would let the
         // game announce it was submitting a score that goes nowhere.
-        onGameComplete,
-        practiceMode: !onGameComplete,
+        onGameComplete: canSubmitRuns
+          ? (score: number, level: number) =>
+              onCompleteRef.current?.(score, level)
+          : undefined,
+        practiceMode: !canSubmitRuns,
       };
     }
 
@@ -85,7 +106,11 @@ export default function PhaserGame({
         delete window.rocketCandleGame;
       }
     };
-  }, [isAuthenticated, walletAddress, onGameComplete]);
+    // Wallet details are deliberately absent from these dependencies: the
+    // effect below keeps them current on the window handle, so connecting a
+    // wallet no longer restarts the game underneath the player.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSubmitRuns]);
 
   // Update global wallet state when authentication changes
   useEffect(() => {

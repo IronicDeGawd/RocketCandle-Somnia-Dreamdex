@@ -2157,8 +2157,14 @@ export class GameScene extends Phaser.Scene {
     const flash = this.add.image(x, y, "enemy-var1").setDepth(800);
     flash.setDisplaySize(enemy.displayWidth, enemy.displayHeight);
     flash.setTintFill(0xffffff);
-    this.time.delayedCall(60, () => flash.clearTint());
-    this.time.delayedCall(120, () => flash.destroy());
+    // Guarded: killing the last enemy of a level ends it, and the level
+    // teardown can destroy this sprite before these fire.
+    this.time.delayedCall(60, () => {
+      if (flash.active) flash.clearTint();
+    });
+    this.time.delayedCall(120, () => {
+      if (flash.active) flash.destroy();
+    });
 
     enemy.destroy();
 
