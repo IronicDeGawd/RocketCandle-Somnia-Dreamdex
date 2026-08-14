@@ -265,3 +265,36 @@
   .sc-row { font-size: 12px; padding: 10px; }
   .sc-back-btn { font-size: 9px; padding: 9px 12px; }
 }
+
+/* --- Wallet gate ---------------------------------------------------------- */
+/* Shown instead of redirecting when the leaderboard has no wallet to work
+   with. Keeps the page you asked for on screen and says what it needs. */
+
+.sc-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  min-height: 60vh;
+  text-align: center;
+}
+
+.sc-gate-title {
+  font-size: 13px;
+  color: var(--rc-blue);
+}
+
+.sc-gate-copy {
+  margin: 0;
+  max-width: 46ch;
+  line-height: 1.6;
+  color: var(--rc-text-soft);
+}
+
+.sc-gate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: center;
+}

@@ -87,6 +87,22 @@
   cursor: not-allowed;
 }
 
+/* Needs a wallet. Dimmed like the design's unavailable keycap, but still
+   clickable - clicking opens the connect prompt rather than doing nothing. */
+.nb-link--locked {
+  opacity: 0.4;
+}
+
+/* Doubled class on purpose. `.nb-link:hover:not(:disabled)` is more specific
+   than a single class, so a locked link was lighting up with the same white
+   text and yellow underline as an available one - promising a page it was not
+   going to open. Blue says "this will ask you for something first". */
+.nb-link.nb-link--locked:hover {
+  opacity: 0.75;
+  color: var(--rc-white);
+  border-bottom-color: var(--rc-blue);
+}
+
 /* --- Actions ------------------------------------------------------------------ */
 
 .nb-actions {
@@ -213,6 +229,10 @@
 .nb-mobile-link:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.nb-mobile-link--locked {
+  opacity: 0.4;
 }
 
 .nb-mobile-link:focus-visible {
