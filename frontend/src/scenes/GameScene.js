@@ -895,6 +895,12 @@ export class GameScene extends Phaser.Scene {
 
     this.cameras.main.shake(400, 0.008);
 
+    // Where the notice goes: at the wall that is coming down, not floating in
+    // the middle of the screen. Read before the blocks are cleared.
+    const topBlock = target.blocks[target.blocks.length - 1];
+    const noticeX = topBlock.x;
+    const noticeY = Math.max(60, topBlock.y - 60);
+
     target.blocks.forEach((block, index) => {
       this.tweens.add({
         targets: block,
@@ -909,37 +915,79 @@ export class GameScene extends Phaser.Scene {
     });
     target.blocks = [];
 
-    this.showBreakoutNotice(wasResistance);
+    this.showBreakoutNotice(wasResistance, noticeX, noticeY);
   }
 
   /**
-   * Say what just happened, in words that need no trading knowledge.
+   * Say what just happened, at the wall it happened to.
+   *
+   * A red plate with the event on the first line and the market cause on the
+   * second. It appears at the barrier rather than in the middle of the screen,
+   * so there is never any doubt which wall the message is about, and only one
+   * exists at a time - a second collapse replaces the first rather than
+   * stacking a second banner on top of it.
    *
    * @param {boolean} wasResistance
+   * @param {number} x world x of the barrier
+   * @param {number} y world y above the barrier
    */
-  showBreakoutNotice(wasResistance) {
-    const message = wasResistance
-      ? "PRICE BROKE THE CEILING - the wall came down"
-      : "PRICE BROKE THE FLOOR - the wall came down";
+  showBreakoutNotice(wasResistance, x, y) {
+    if (this.breakoutNotice) {
+      this.tweens.killTweensOf(this.breakoutNotice);
+      this.breakoutNotice.destroy();
+      this.breakoutNotice = null;
+    }
 
-    const notice = this.add
-      .text(600, 120, message, {
-        fontSize: "20px",
-        fill: wasResistance ? "#4ade80" : "#f87171",
+    const cause = wasResistance ? "BUY PRESSURE" : "SELL PRESSURE";
+
+    const plate = this.add.container(x, y).setDepth(1000);
+
+    const label = this.add
+      .text(0, -8, "WALL DOWN", {
+        fontSize: "14px",
+        fill: "#ffffff",
         fontFamily: PIXEL_FONT,
-        stroke: "#000000",
-        strokeThickness: 4,
+      })
+      .setOrigin(0.5);
+
+    const reason = this.add
+      .text(0, 12, cause, {
+        fontSize: "10px",
+        fill: "#ffffff",
+        fontFamily: PIXEL_FONT,
       })
       .setOrigin(0.5)
-      .setDepth(1000);
+      .setAlpha(0.75);
 
+    // The plate is sized to whichever line is wider, so the border never
+    // clips the text at any message length.
+    const width = Math.max(label.width, reason.width) + 32;
+    const height = 60;
+
+    const face = this.add.graphics();
+    face.fillStyle(RC_INK, 1);
+    face.fillRect(-width / 2 + 5, -height / 2 + 5, width, height);
+    face.fillStyle(RC_INK, 1);
+    face.fillRect(-width / 2, -height / 2, width, height);
+    face.fillStyle(RC_RED, 1);
+    face.fillRect(-width / 2 + 4, -height / 2 + 4, width - 8, height - 8);
+
+    plate.add([face, label, reason]);
+
+    this.breakoutNotice = plate;
+
+    // Held for 700ms, then gone. Long enough to read two short lines, short
+    // enough that it is never still there when the next shot is aimed.
     this.tweens.add({
-      targets: notice,
+      targets: plate,
       alpha: 0,
-      y: 90,
-      duration: 2600,
+      duration: 700,
+      delay: 700,
       ease: "Quad.easeOut",
-      onComplete: () => notice.destroy(),
+      onComplete: () => {
+        plate.destroy();
+        if (this.breakoutNotice === plate) this.breakoutNotice = null;
+      },
     });
   }
 
@@ -1256,8 +1304,13 @@ export class GameScene extends Phaser.Scene {
     // Calculate height based on high-low range
     const priceRange = candle.high - candle.low;
     const maxRange = this.getMaxPriceRangeForLevel();
-    const MIN_HEIGHT = 50; // Minimum barrier height (1 block) - reduced from 100
-    const MAX_HEIGHT = 150; // Maximum barrier height (3 blocks) - reduced from 350
+    // Six steps of 50px, not three. Barrier height is the one place a
+    // player can see that one level's market differed from another's, and
+    // with only three possible heights every level looked alike. Six doubles
+    // the vocabulary without changing the block size the whole level is
+    // built on.
+    const MIN_HEIGHT = 50; // one block
+    const MAX_HEIGHT = 300; // six blocks
 
     const scaledHeight = Math.max(
       MIN_HEIGHT,
@@ -1674,14 +1727,45 @@ export class GameScene extends Phaser.Scene {
         break;
       }
 
+      // The preview shows the first arc only - where the shot first meets
+      // something solid. It deliberately does not predict the bounce that
+      // follows, because working that out is the game.
+      if (this.trajectoryHitsBarrier(x, y)) {
+        break;
+      }
+
       points.push({ x, y });
     }
 
-    // Limit to 75% of the trajectory points
-    const limitedPoints = points.slice(0, Math.floor(points.length * 0.75));
+    this.trajectoryPoints = points;
+    return points;
+  }
 
-    this.trajectoryPoints = limitedPoints;
-    return limitedPoints;
+  /**
+   * Is this point inside a standing candle barrier?
+   *
+   * Used only by the aim preview, so it tests the drawn rectangles directly
+   * rather than going through the physics engine - the preview runs while
+   * nothing is moving and has no body of its own to collide with.
+   *
+   * @param {number} x world x
+   * @param {number} y world y
+   * @returns {boolean}
+   */
+  trajectoryHitsBarrier(x, y) {
+    if (!this.candlesticks) return false;
+
+    return this.candlesticks.getChildren().some((block) => {
+      if (!block.active) return false;
+      const halfWidth = block.displayWidth / 2;
+      const halfHeight = block.displayHeight / 2;
+      return (
+        x >= block.x - halfWidth &&
+        x <= block.x + halfWidth &&
+        y >= block.y - halfHeight &&
+        y <= block.y + halfHeight
+      );
+    });
   }
 
   /**
@@ -1690,12 +1774,25 @@ export class GameScene extends Phaser.Scene {
   renderTrajectoryLine(points) {
     if (points.length < 2) return;
 
-    // Draw trajectory as dark gray dots for better visibility
-    this.trajectoryGraphics.fillStyle(0x404040, 0.9); // Dark gray dots with high opacity
+    // Five dots, not a dotted line. A dot every 50ms drew about seventy of
+    // them, which reads as a solid stroke and hides where the arc actually
+    // goes; five evenly spaced marks show the shape and leave the field
+    // readable. They fade with distance so the near end is unambiguous.
+    const FADES = [1, 0.78, 0.56, 0.36, 0.2];
+    const SIZE = 10;
 
-    // Draw dots for every point (not every 5th)
-    for (let i = 0; i < points.length; i++) {
-      this.trajectoryGraphics.fillCircle(points[i].x, points[i].y, 2);
+    for (let i = 0; i < FADES.length; i++) {
+      // Spread the samples across the whole path rather than clustering them
+      // at the launcher, where they would all overlap.
+      const index = Math.round((i / (FADES.length - 1)) * (points.length - 1));
+      const point = points[index];
+      this.trajectoryGraphics.fillStyle(RC_YELLOW, FADES[i]);
+      this.trajectoryGraphics.fillRect(
+        point.x - SIZE / 2,
+        point.y - SIZE / 2,
+        SIZE,
+        SIZE
+      );
     }
   }
 
@@ -1870,7 +1967,9 @@ export class GameScene extends Phaser.Scene {
    */
   createExplosion(x, y) {
     // Create explosion circle that expands and fades
-    const explosionCircle = this.add.circle(x, y, 5, 0x8000ff, 0.8);
+    // Yellow, not the purple this used to be: purple is not one of the five
+    // colours this game is allowed to use, and it read as a different game.
+    const explosionCircle = this.add.circle(x, y, 5, RC_YELLOW, 0.8);
 
     // Animate explosion expansion
     this.tweens.add({
@@ -1888,7 +1987,7 @@ export class GameScene extends Phaser.Scene {
     const particles = this.add.particles(x, y, "rocket", {
       speed: { min: 80, max: 200 }, // Increased speed for larger explosion
       scale: { start: 0.4, end: 0 }, // Slightly larger particles
-      tint: [0x8000ff, 0xaa00ff, 0xffffff], // Brighter purple ascent colors for dark theme
+      tint: [RC_YELLOW, RC_RED, 0xffffff],
       lifespan: 500, // Longer lifespan for more impact
       quantity: 18, // More particles for better coverage
     });
@@ -1957,10 +2056,10 @@ export class GameScene extends Phaser.Scene {
    */
   destroyBlock(block) {
     // Create breaking effect with small particles
-    const particles = this.add.particles(block.x, block.y, 0x9900ff, {
+    const particles = this.add.particles(block.x, block.y, "dest-block", {
       speed: { min: 30, max: 80 },
       scale: { start: 0.5, end: 0.1 },
-      tint: 0x9900ff,
+      tint: RC_BLUE,
       lifespan: 200,
       quantity: 4,
     });
@@ -1983,10 +2082,24 @@ export class GameScene extends Phaser.Scene {
       this.sounds.enemyDestroy.play();
     }
 
-    // Create enemy death effect
-    const deathEffect = this.add.circle(enemy.x, enemy.y, 15, 0x8000ff, 0.6);
+    const x = enemy.x;
+    const y = enemy.y;
 
-    // Animate death effect
+    // Two frames of white where the enemy was, so a kill is unmistakable even
+    // when several go at once. The flash is a separate sprite and the enemy
+    // itself is removed immediately: the level-complete check counts live
+    // enemies on the same frame, and holding one back to animate it would
+    // make the last kill of a level fail to end it.
+    const flash = this.add.image(x, y, "enemy-var1").setDepth(800);
+    flash.setDisplaySize(enemy.displayWidth, enemy.displayHeight);
+    flash.setTintFill(0xffffff);
+    this.time.delayedCall(60, () => flash.clearTint());
+    this.time.delayedCall(120, () => flash.destroy());
+
+    enemy.destroy();
+
+    const deathEffect = this.add.circle(x, y, 15, RC_RED, 0.6);
+
     this.tweens.add({
       targets: deathEffect,
       radius: 30,
@@ -1998,29 +2111,44 @@ export class GameScene extends Phaser.Scene {
       },
     });
 
-    // Add score popup effect
-    const scoreText = this.add
-      .text(enemy.x, enemy.y - 20, "+10", {
+    this.showScorePopup(x, y, "+10");
+  }
+
+  /**
+   * A number that rises from where it was earned and fades out.
+   *
+   * Anchored to a point in the world rather than to the frame, which is why
+   * it stays drawn in the canvas while the rest of the readouts moved to
+   * HTML. Yellow for a gain, red for anything taken away.
+   *
+   * @param {number} x world x
+   * @param {number} y world y
+   * @param {string} label e.g. "+10"
+   */
+  showScorePopup(x, y, label) {
+    const gain = !label.startsWith("-");
+
+    const text = this.add
+      .text(x, y - 20, label, {
         fontFamily: PIXEL_FONT,
-        fontSize: "14px",
-        color: "#F6F740",
+        fontSize: "18px",
+        color: gain ? "#F6F740" : "#E94F37",
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setDepth(900);
 
-    // Animate score popup
+    // The hard offset shadow every surface in this design has, done as a
+    // stroke because canvas text has no box to cast one from.
+    text.setShadow(4, 4, "#14161A", 0, false, true);
+
     this.tweens.add({
-      targets: scoreText,
-      y: enemy.y - 40,
+      targets: text,
+      y: y - 60,
       alpha: 0,
-      duration: 800,
+      duration: 700,
       ease: "Power2",
-      onComplete: () => {
-        scoreText.destroy();
-      },
+      onComplete: () => text.destroy(),
     });
-
-    enemy.destroy();
-    //console.log("👾 Enemy destroyed with death effect");
   }
 
   /**

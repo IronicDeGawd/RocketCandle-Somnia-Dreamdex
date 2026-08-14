@@ -97,9 +97,9 @@ export const DesignTextures = {
       g.fillStyle(WELL, 1);
       g.fillRect(0, 0, w, h);
       g.fillStyle(BLUE, 1);
-      g.fillRect(0, 0, w, 26);
+      g.fillRect(0, 0, w, 30);
       g.fillStyle(INK, 1);
-      for (let x = 0; x < w; x += 24) g.fillRect(x, 0, 12, 26);
+      for (let x = 0; x < w; x += 28) g.fillRect(x, 0, 14, 30);
       g.fillRect(0, 0, w, 4);
     });
 
@@ -115,16 +115,15 @@ export const DesignTextures = {
     paint(scene, "dest-block", (g, w, h) => panel(g, 0, 0, w, h, SURFACE, 3));
     paint(scene, "dest2-block", (g, w, h) => panel(g, 0, 0, w, h, WELL, 3));
 
-    // Enemies: red, because red is threat, with two white eyes so a target is
-    // still obviously a creature and not another block.
+    // Enemies: red, because red is threat, with two ink eyes so a target is
+    // still obviously a creature and not another block. The eyes are cut
+    // straight out of the red rather than being white blocks with pupils -
+    // at this size the extra ring of white just read as noise.
     const enemy = (eyeInset) => (g, w, h) => {
-      panel(g, 4, 8, w - 8, h - 16, RED, 3);
-      g.fillStyle(WHITE, 1);
-      g.fillRect(12 + eyeInset, 20, 7, 7);
-      g.fillRect(w - 19 - eyeInset, 20, 7, 7);
+      panel(g, 3, 10, w - 6, h - 20, RED, 4);
       g.fillStyle(INK, 1);
-      g.fillRect(14 + eyeInset, 22, 3, 3);
-      g.fillRect(w - 17 - eyeInset, 22, 3, 3);
+      g.fillRect(15 + eyeInset, 22, 6, 6);
+      g.fillRect(w - 21 - eyeInset, 22, 6, 6);
     };
     paint(scene, "enemy-var1", enemy(0));
     paint(scene, "enemy-var2", enemy(1));
@@ -142,9 +141,13 @@ export const DesignTextures = {
       g.fillRect(21, 2, 8, 6);
       g.fillStyle(YELLOW, 1);
       g.fillRect(22, 3, 6, 4);
-      // exhaust
+      // Exhaust, in two steps rather than one block: a bright stub against
+      // the body and a wider, dimmer one behind it. Two steps read as thrust
+      // coming out; one block read as a yellow foot.
       g.fillStyle(YELLOW, 1);
-      g.fillRect(22, 42, 6, 5);
+      g.fillRect(21, 42, 8, 4);
+      g.fillStyle(YELLOW, 0.55);
+      g.fillRect(18, 46, 14, 4);
     });
 
     // The launcher: a red barrel on a white base, as the design draws it.
