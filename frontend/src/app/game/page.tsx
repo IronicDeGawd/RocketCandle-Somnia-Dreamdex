@@ -43,9 +43,12 @@ const TradingSetup = dynamic(
 );
 const PhaserGame = dynamic(() => import("@/components/PhaserGame"), {
   ssr: false,
+  // Shown before the cabinet's own chunk (and the CSS that styles it) has
+  // arrived, so this leans only on design-system.css primitives - anything
+  // from game.css would still be unstyled at this exact moment.
   loading: () => (
-    <div className="w-full h-96 bg-gray-900 rounded-lg flex items-center justify-center">
-      <div className="text-white">Loading Game...</div>
+    <div className="rc-panel rc-loading-box">
+      <p className="rc-pixel rc-blink rc-loading-text">LOADING GAME…</p>
     </div>
   ),
 });

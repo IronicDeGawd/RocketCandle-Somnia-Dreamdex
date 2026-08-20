@@ -178,6 +178,25 @@ a:hover {
   padding: 12px 14px;
 }
 
+/* A panel standing in for a block that has not mounted yet - the game
+   cabinet before its own chunk arrives, currently. Same footprint as what
+   it is about to become, so the page does not jump when the swap happens. */
+.rc-loading-box {
+  width: 100%;
+  min-height: 24rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Same treatment as the wallet gate's status line - pixel face, blinking,
+   blue for "the system is doing something", not a colour tied to money or
+   danger. */
+.rc-loading-text {
+  font-size: 13px;
+  color: var(--rc-blue);
+}
+
 /* --- Buttons ------------------------------------------------------------ */
 
 .rc-btn {
