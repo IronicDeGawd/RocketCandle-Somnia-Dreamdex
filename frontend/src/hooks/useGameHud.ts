@@ -198,25 +198,6 @@ export function useExitPlan(): ExitPlan {
 }
 
 /**
- * Is the menu the scene on screen?
- *
- * The trading panel is the way into a run, so it takes over the frame there -
- * but only there. Mid-run and on the results screen it belongs in the rail,
- * and without this it reappeared over the results the instant the run's
- * position sold itself.
- */
-export function useAtMenu(): boolean {
-  return useSyncExternalStore(
-    subscribe,
-    () =>
-      typeof window === "undefined"
-        ? false
-        : Boolean(window.rocketCandleGame?.atMenu),
-    () => false
-  );
-}
-
-/**
  * The scene's control surface, once it has registered one.
  *
  * null until a GameScene has booted and called registerControls() - callers

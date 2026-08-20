@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as Phaser from "phaser";
 import { PreloadScene } from "@/scenes/PreloadScene.js";
 import { MenuScene } from "@/scenes/MenuScene.js";
+import { RunSetupScene } from "@/scenes/RunSetupScene.js";
 import { GameScene } from "@/scenes/GameScene.js";
 import { EndGameScene } from "@/scenes/EndGameScene.js";
 import { useApp } from "@/app/providers";
@@ -62,7 +63,7 @@ export default function PhaserGame({
           debug: false,
         },
       },
-      scene: [PreloadScene, MenuScene, GameScene, EndGameScene],
+      scene: [PreloadScene, MenuScene, RunSetupScene, GameScene, EndGameScene],
       scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -161,13 +162,6 @@ declare global {
        * added together. Kept here so the navbar can show it from any page.
        */
       tradedVolume?: number;
-      /**
-       * Is the menu the scene on screen?
-       *
-       * The trading panel only takes over the frame there. Anywhere else -
-       * mid-run, or on the results - it belongs in the rail.
-       */
-      atMenu?: boolean;
       /** The exits chosen on the menu, which GameScene enforces. */
       exitPlan?: import("@/hooks/useGameHud").ExitPlan;
     };
