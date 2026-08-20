@@ -109,10 +109,10 @@ export class RunSetupScene extends Phaser.Scene {
   /** A framed row: the stake, with nudges either side of it. */
   buildStakeRow() {
     const y = 216;
-    this.panel(600, y, 660, 88);
+    this.panel(600, y, 660, 96);
 
     this.add
-      .text(600, y - 26, "YOUR STAKE", {
+      .text(600, y - 32, "YOUR STAKE", {
         fontFamily: PIXEL_FONT,
         fontSize: "9px",
         color: "rgba(255,255,255,0.55)",
@@ -120,18 +120,18 @@ export class RunSetupScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.stakeText = this.add
-      .text(600, y + 8, "reading the vault...", {
+      .text(600, y + 2, "reading the vault...", {
         fontFamily: MONO_FONT,
         fontSize: "24px",
         color: "#FFFFFF",
       })
       .setOrigin(0.5);
 
-    this.nudge(600 - 250, y + 6, "-", () => this.stepStake(-STAKE_STEP));
-    this.nudge(600 + 250, y + 6, "+", () => this.stepStake(STAKE_STEP));
+    this.nudge(600 - 250, y, "-", () => this.stepStake(-STAKE_STEP));
+    this.nudge(600 + 250, y, "+", () => this.stepStake(STAKE_STEP));
 
     this.vaultNote = this.add
-      .text(600, y + 56, "", {
+      .text(600, y + 34, "", {
         fontFamily: MONO_FONT,
         fontSize: "13px",
         color: "rgba(255,255,255,0.55)",
@@ -140,11 +140,11 @@ export class RunSetupScene extends Phaser.Scene {
   }
 
   buildExitRow() {
-    const y = 348;
-    this.panel(600, y, 660, 88);
+    const y = 352;
+    this.panel(600, y, 660, 96);
 
     this.add
-      .text(600, y - 30, "SELL ITSELF WHEN", {
+      .text(600, y - 34, "SELL ITSELF WHEN", {
         fontFamily: PIXEL_FONT,
         fontSize: "9px",
         color: "rgba(255,255,255,0.55)",
@@ -153,7 +153,7 @@ export class RunSetupScene extends Phaser.Scene {
 
     this.floorValue = this.exitControl(
       600 - 160,
-      y + 8,
+      y - 2,
       "IT FALLS",
       RED,
       () => this.cycleExit("floorPct", FLOOR_CHOICES)
@@ -161,7 +161,7 @@ export class RunSetupScene extends Phaser.Scene {
 
     this.targetValue = this.exitControl(
       600 + 160,
-      y + 8,
+      y - 2,
       "IT RISES",
       YELLOW,
       () => this.cycleExit("targetPct", TARGET_CHOICES)
@@ -170,7 +170,7 @@ export class RunSetupScene extends Phaser.Scene {
     this.add
       .text(
         600,
-        y + 56,
+        y + 34,
         "watched while this page is open - neither ends your run",
         {
           fontFamily: MONO_FONT,

@@ -134,6 +134,22 @@ function InnerProviders({ children }: { children: ReactNode }) {
     }
   }, [playerStatsData, wagmiAddress, contractAddress]);
 
+  /*
+   * Hand the stats to the canvas.
+   *
+   * The menu drew "CONNECT WALLET TO SEE YOUR STATS" against
+   * `window.web3Service` and `window.walletManager` - two globals inherited
+   * from an earlier version of this game that nothing here ever creates. So it
+   * said that to every player, connected or not, and the stats it would have
+   * shown came from a call that no longer exists either. These are the real
+   * figures, read from the contract above.
+   */
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.rocketCandleGame) return;
+    window.rocketCandleGame.playerStats = playerStats ?? undefined;
+    window.dispatchEvent(new CustomEvent("rc-hud"));
+  }, [playerStats]);
+
   const refreshPlayerStats = useCallback(async () => {
     // This is now handled automatically by wagmi useReadContract
     console.log("📊 Provider - Player stats will auto-refresh via wagmi");

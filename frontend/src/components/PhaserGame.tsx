@@ -162,6 +162,13 @@ declare global {
        * added together. Kept here so the navbar can show it from any page.
        */
       tradedVolume?: number;
+      /**
+       * Games played, best score and WICK earned, read from the contract.
+       *
+       * Published because the canvas cannot see React state, and the menu's
+       * own source for this was a global that never existed.
+       */
+      playerStats?: import("@/lib/blockchain").PlayerStats;
       /** The exits chosen on the menu, which GameScene enforces. */
       exitPlan?: import("@/hooks/useGameHud").ExitPlan;
     };

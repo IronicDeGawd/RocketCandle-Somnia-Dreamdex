@@ -63,7 +63,7 @@ export class MenuScene extends Phaser.Scene {
     // Create play button
     this.playButton = this.createPixelButton(
       600,
-      452,
+      462,
       400,
       72,
       "NEXT",
@@ -78,7 +78,7 @@ export class MenuScene extends Phaser.Scene {
 
     // Create instructions
     this.add
-      .text(600, 518, "AIM WITH SLIDERS · LAUNCH TO FIRE", {
+      .text(600, 528, "AIM WITH SLIDERS · LAUNCH TO FIRE", {
         fontFamily: PIXEL_FONT,
         fontSize: "12px",
         color: "rgba(255,255,255,0.55)",
@@ -86,7 +86,7 @@ export class MenuScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.add
-      .text(600, 544, "LIMITED ATTEMPTS PER LEVEL", {
+      .text(600, 554, "LIMITED ATTEMPTS PER LEVEL", {
         fontFamily: PIXEL_FONT,
         fontSize: "12px",
         color: "#E94F37",
@@ -230,7 +230,7 @@ export class MenuScene extends Phaser.Scene {
    */
   createMarketPicker() {
     this.add
-      .text(600, 140, "CHOOSE YOUR MARKET", {
+      .text(600, 128, "CHOOSE YOUR MARKET", {
         fontFamily: PIXEL_FONT,
         fontSize: "15px",
         color: "#3F88C5",
@@ -242,11 +242,11 @@ export class MenuScene extends Phaser.Scene {
     const chipWidth = 520;
     const chipHeight = 74;
     const gapX = 40;
-    const gapY = 18;
+    const gapY = 20;
     const columns = 2;
     const gridWidth = columns * chipWidth + (columns - 1) * gapX;
     const startX = 600 - gridWidth / 2 + chipWidth / 2;
-    const rowY = [186, 186 + chipHeight + gapY];
+    const rowY = [194, 194 + chipHeight + gapY];
 
     this.marketChips = [];
 
@@ -296,7 +296,7 @@ export class MenuScene extends Phaser.Scene {
     // so it gets its own bordered panel and the mono face, in blue.
     // Clear of the second chip row, which ends at y=280. At 300 the panel
     // started at 273 and sat on top of the Ether and Bitcoin chips.
-    const panelY = 372;
+    const panelY = 382;
     const panelHeight = 48;
 
     this.add.rectangle(
@@ -527,66 +527,68 @@ export class MenuScene extends Phaser.Scene {
   }
 
   /**
-   * Display player stats from blockchain asynchronously
+   * What this player has done here before.
+   *
+   * This tested `window.web3Service` and `window.walletManager` - two globals
+   * inherited from an earlier version of this game that nothing in this one
+   * creates - so it told every player to connect a wallet, including the ones
+   * who had. The figures now come from the contract read the page already
+   * does, published onto the window because the canvas cannot see React state.
    */
-  async displayPlayerStats() {
-    const statsY = 98;
+  displayPlayerStats() {
+    this.statsText = this.add
+      .text(600, 98, "", {
+        fontFamily: MONO_FONT,
+        fontSize: "13px",
+        color: "rgba(255,255,255,0.55)",
+      })
+      .setOrigin(0.5);
 
-    try {
-      if (!window.web3Service || !window.walletManager?.isConnected) {
-        this.add
-          .text(600, statsY, "CONNECT WALLET TO SEE YOUR STATS", {
-            fontFamily: MONO_FONT,
-            fontSize: "13px",
-            color: "rgba(255,255,255,0.55)",
-          })
-          .setOrigin(0.5);
-        return;
-      }
+    this.refreshPlayerStats();
 
-      // Get player scores from blockchain
-      const playerScores = await window.web3Service.getPlayerScores();
+    // The contract read finishes after this scene is drawn, so the line has to
+    // be able to change its mind.
+    const onChange = () => this.refreshPlayerStats();
+    window.addEventListener("rc-hud", onChange);
+    this.events.once("shutdown", () =>
+      window.removeEventListener("rc-hud", onChange)
+    );
+    this.events.once("destroy", () =>
+      window.removeEventListener("rc-hud", onChange)
+    );
+  }
 
-      if (
-        playerScores &&
-        playerScores.results &&
-        playerScores.results.length > 0
-      ) {
-        const scores = playerScores.results.map((result) => result.score);
-        const lastScore = scores[scores.length - 1]; // Most recent score
-        const bestScore = Math.max(...scores);
-        const totalGames = scores.length;
+  refreshPlayerStats() {
+    if (!this.statsText) return;
 
-        this.add
-          .text(
-            600,
-            statsY,
-            `LAST ${lastScore} · BEST ${bestScore} · GAMES ${totalGames}`,
-            {
-              fontFamily: MONO_FONT,
-              fontSize: "14px",
-              color: "rgba(255,255,255,0.7)",
-            }
-          )
-          .setOrigin(0.5);
-      } else {
-        this.add
-          .text(600, statsY, "PLAY YOUR FIRST GAME TO SEE STATS", {
-            fontFamily: MONO_FONT,
-            fontSize: "13px",
-            color: "rgba(255,255,255,0.55)",
-          })
-          .setOrigin(0.5);
-      }
-    } catch (error) {
-      console.warn("Failed to load player stats from blockchain:", error);
-      this.add
-        .text(600, statsY, "FAILED TO LOAD STATS", {
-          fontFamily: MONO_FONT,
-          fontSize: "13px",
-          color: "#E94F37",
-        })
-        .setOrigin(0.5);
+    const game = typeof window === "undefined" ? null : window.rocketCandleGame;
+
+    if (!game?.isConnected) {
+      this.statsText.setText("CONNECT WALLET TO SEE YOUR STATS");
+      this.statsText.setColor("rgba(255,255,255,0.55)");
+      return;
     }
+
+    const stats = game.playerStats;
+
+    // Connected, but the contract has not answered yet. Saying "no games" here
+    // would be a guess dressed as a fact.
+    if (!stats) {
+      this.statsText.setText("READING YOUR STATS...");
+      this.statsText.setColor("rgba(255,255,255,0.4)");
+      return;
+    }
+
+    if (!stats.totalGames) {
+      this.statsText.setText("PLAY YOUR FIRST GAME TO SEE STATS");
+      this.statsText.setColor("rgba(255,255,255,0.55)");
+      return;
+    }
+
+    this.statsText.setText(
+      `BEST ${stats.bestScore} · GAMES ${stats.totalGames} · ` +
+        `WICK ${stats.totalTokens.toFixed(0)}`
+    );
+    this.statsText.setColor("rgba(255,255,255,0.7)");
   }
 }
