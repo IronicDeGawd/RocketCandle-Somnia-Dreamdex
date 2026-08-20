@@ -6,11 +6,7 @@ import { GAME_MARKETS } from "@/data/DreamdexMarketFeed.js";
 import { ERC20_ABI, USDSO_ADDRESS } from "@/lib/dreamdex";
 import { fetchMarket } from "@/lib/dreamdex";
 import { minStakeFor, type MarketMinimum } from "@/lib/minimums";
-import {
-  createReadClients,
-  readTopOfBook,
-  readVaultBalance,
-} from "@/lib/orders";
+import { createReadClients, readTopOfBook } from "@/lib/orders";
 
 /**
  * What each market's smallest possible buy costs, right now.
@@ -25,19 +21,6 @@ import {
  */
 
 export type MarketMinimums = Record<string, MarketMinimum>;
-
-/**
- * Both sides of a market's own vault, keyed by market id.
- *
- * The quote side alone used to be enough because gating compared it against
- * a minimum priced in USDso. Recovery (see `lib/recovery.ts`) has to catch a
- * partial fill's leftover base tokens too, so both sides are read and kept
- * here - and, per `vault-as-transit.md` §5, this pair is read for recovery
- * ONLY. Nothing gates on it any more; that job moved to `walletUsdso`, which
- * is also what the picker and the navbar read now instead of a per-pool
- * vault balance.
- */
-export type MarketVaultSides = Record<string, { quote: number; base: number }>;
 
 /**
  * @param owner the connected wallet, or nothing when there is none
@@ -55,7 +38,6 @@ export function useMarketMinimums(owner?: `0x${string}` | null) {
    */
   const latestRef = useRef<{
     minimums: MarketMinimums;
-    vaultSides: MarketVaultSides;
     walletUsdso: number | undefined;
   } | null>(null);
 
@@ -69,7 +51,6 @@ export function useMarketMinimums(owner?: `0x${string}` | null) {
       if (!latest) return;
 
       window.rocketCandleGame.marketMinimums = latest.minimums;
-      window.rocketCandleGame.marketVaultSides = latest.vaultSides;
       window.rocketCandleGame.walletUsdso = latest.walletUsdso;
       window.dispatchEvent(new CustomEvent("rc-hud"));
     };
@@ -91,33 +72,7 @@ export function useMarketMinimums(owner?: `0x${string}` | null) {
             const { bestAsk } = await readTopOfBook(clients, meta);
             const min = minStakeFor(meta, bestAsk ?? 0);
 
-            /*
-             * Each market keeps its own vault, on both sides.
-             *
-             * getWithdrawableBalance is a call on the pool, so money deposited
-             * for one pair is not spendable on another - this read is no
-             * longer what gates a market (that moved to the wallet balance
-             * below), it exists purely so the recovery path can find money a
-             * finished run left behind. The base side matters too: a partial
-             * fill leaves base tokens in the pool, and missing that side is
-             * the exact bug that stranded 11 SOMI on this project already.
-             */
-            const [quoteVault, baseVault] = owner
-              ? await Promise.all([
-                  readVaultBalance(clients, meta, owner, USDSO_ADDRESS).catch(
-                    () => null
-                  ),
-                  readVaultBalance(
-                    clients,
-                    meta,
-                    owner,
-                    meta.base,
-                    "base"
-                  ).catch(() => null),
-                ])
-              : [null, null];
-
-            return [game.id, min, quoteVault, baseVault] as const;
+            return [game.id, min] as const;
           } catch {
             // One market being unreadable must not gate the other three.
             return null;
@@ -149,37 +104,17 @@ export function useMarketMinimums(owner?: `0x${string}` | null) {
       if (cancelled || typeof window === "undefined") return;
 
       const readable = found.filter(
-        (
-          entry
-        ): entry is readonly [
-          string,
-          MarketMinimum | null,
-          number | null,
-          number | null
-        ] => Boolean(entry)
+        (entry): entry is readonly [string, MarketMinimum | null] =>
+          Boolean(entry)
       );
 
       latestRef.current = {
         minimums: Object.fromEntries(
           readable
             .filter(
-              (e): e is readonly [string, MarketMinimum, number | null, number | null] =>
-                Boolean(e[1])
+              (e): e is readonly [string, MarketMinimum] => Boolean(e[1])
             )
             .map(([id, min]) => [id, min])
-        ),
-        vaultSides: Object.fromEntries(
-          readable
-            .filter(
-              (
-                e
-              ): e is readonly [string, MarketMinimum | null, number | null, number | null] =>
-                typeof e[2] === "number" || typeof e[3] === "number"
-            )
-            .map(([id, , quote, base]) => [
-              id,
-              { quote: quote ?? 0, base: base ?? 0 },
-            ])
         ),
         walletUsdso,
       };

@@ -183,12 +183,6 @@ declare global {
        */
       marketMinimums?: import("@/hooks/useMarketMinimums").MarketMinimums;
       /**
-       * Both sides of each market's own vault, kept for the recovery path
-       * only (see `lib/recovery.ts` and `vault-as-transit.md` §5) - nothing
-       * gates on this. Every gate reads `walletUsdso` below instead.
-       */
-      marketVaultSides?: import("@/hooks/useMarketMinimums").MarketVaultSides;
-      /**
        * This wallet's own USDso balance, read once per cycle.
        *
        * The one number every gate compares against from here on - "does your
