@@ -596,12 +596,16 @@ export function useSessionKey(symbol?: string): UseSessionKey {
          * dangerous order - the leftover becomes unrecoverable the instant
          * the key is forgotten.
          */
+        let sweepFailed = false;
         try {
           await sweepKey();
         } catch (e) {
+          sweepFailed = true;
           console.error("Sweep before revoke failed", e);
           setSweepWarning(
-            `Could not return the key's leftover gas: ${mapWalletError(e).message} You can retry later.`
+            `Could not return the key's leftover gas: ${mapWalletError(e).message} ` +
+              `The key stays in this browser so you can retry the return; it can no ` +
+              `longer trade.`
           );
         }
 
@@ -629,8 +633,20 @@ export function useSessionKey(symbol?: string): UseSessionKey {
         // Revoke on chain first, forget locally second. A key that is forgotten
         // while still authorised is a key nobody can see and nobody can stop.
         await refreshAuthorization(meta.pool, key.address);
-        forgetSessionKey();
-        setSessionKey(null);
+
+        /*
+         * Keep the key when its gas could not be returned.
+         *
+         * Forgetting it here is what makes the leftover unrecoverable - the
+         * private key lives only in this browser, so discarding it discards the
+         * money with it. The warning above promises a retry, and this is what
+         * leaves something to retry with. The key is already revoked on chain by
+         * this point, so keeping it grants no trading power.
+         */
+        if (!sweepFailed) {
+          forgetSessionKey();
+          setSessionKey(null);
+        }
         setStep("idle");
       } catch (e) {
         console.error("Failed to revoke the session key:", e);
