@@ -447,6 +447,31 @@ export const GAME_CONTRACT_ABI = [
       "anonymous": false,
       "inputs": [
         {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "fromWeek",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "toWeek",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "WeekRolledOver",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
           "indexed": false,
           "internalType": "uint256",
           "name": "week",
@@ -625,6 +650,19 @@ export const GAME_CONTRACT_ABI = [
     {
       "inputs": [],
       "name": "REVIVE_COST",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "ROLLOVER_GRACE_WEEKS",
       "outputs": [
         {
           "internalType": "uint256",
@@ -1287,6 +1325,19 @@ export const GAME_CONTRACT_ABI = [
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_week",
+          "type": "uint256"
+        }
+      ],
+      "name": "rollOverWeek",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "runAttestor",
       "outputs": [
@@ -1527,6 +1578,30 @@ export const GAME_CONTRACT_ABI = [
           "internalType": "uint256",
           "name": "",
           "type": "uint256"
+        }
+      ],
+      "name": "weekPot",
+      "outputs": [
+        {
+          "internalType": "uint128",
+          "name": "funded",
+          "type": "uint128"
+        },
+        {
+          "internalType": "uint128",
+          "name": "paid",
+          "type": "uint128"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         },
         {
           "internalType": "address",
@@ -1626,25 +1701,6 @@ export const GAME_CONTRACT_ABI = [
         }
       ],
       "name": "weeklyPointsTotal",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "name": "weeklyPot",
       "outputs": [
         {
           "internalType": "uint256",
