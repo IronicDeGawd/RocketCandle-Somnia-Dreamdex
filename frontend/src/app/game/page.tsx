@@ -95,7 +95,7 @@ export default function GamePage() {
 
   // What each market's smallest possible buy costs, for the picker to grey out
   // the ones this vault cannot reach.
-  useMarketMinimums();
+  useMarketMinimums(address);
   const tradingSymbol = selectedMarket?.symbol ?? DEFAULT_MARKET_SYMBOL;
   const [gameStartTime, setGameStartTime] = useState<number>(0);
   const [isSubmittingScore, setIsSubmittingScore] = useState(false);

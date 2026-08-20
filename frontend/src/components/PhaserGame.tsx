@@ -176,6 +176,13 @@ declare global {
        * the token's price - a market can be unaffordable with a funded vault.
        */
       marketMinimums?: import("@/hooks/useMarketMinimums").MarketMinimums;
+      /**
+       * USDso in each market's OWN vault, keyed by market id.
+       *
+       * The vault is per pool - money deposited for one pair cannot be spent on
+       * another - so there is no single "the vault" to compare against.
+       */
+      marketVaults?: import("@/hooks/useMarketMinimums").MarketVaults;
       /** The exits chosen on the menu, which GameScene enforces. */
       exitPlan?: import("@/hooks/useGameHud").ExitPlan;
     };

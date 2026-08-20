@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from "@/app/providers";
 import { useTradedVolume } from "@/hooks/useTradedVolume";
+import { useMarketVault } from "@/hooks/useMarketVault";
 import SomniaLogo from "../ui/SomniaLogo";
 import "./navbar.css";
 
@@ -13,6 +14,7 @@ interface NavbarProps {
 const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
   const { connectWallet, signOut, isLoading, isAuthenticated, user, playerStats } = useApp();
   const tradedVolume = useTradedVolume(user?.address);
+  const vault = useMarketVault();
 
   // The wallet dropdown and the mobile hamburger menu used to share one
   // boolean, so opening either one closed the other - a phone user could
@@ -127,12 +129,33 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
           {isAuthenticated ? (
             /* What this wallet has moved through the exchange, buys and sells
                added together - the same figure an exchange calls volume. */
-            <div className="nb-vol" title="USDso traded, buys and sells added together">
-              <span className="nb-vol-label rc-pixel">VOL</span>
-              <span className="nb-vol-value rc-mono">
-                {tradedVolume.toFixed(2)}
-              </span>
-            </div>
+            <>
+              {/* What is spendable right now. Named after its market, because
+                  the vault is per pool: money deposited for one pair cannot
+                  buy another, so an unlabelled figure would be a promise the
+                  next screen breaks. */}
+              <div
+                className="nb-vol"
+                title={`USDso in your ${vault.label} vault, ready to play with`}
+              >
+                <span className="nb-vol-label rc-pixel">
+                  VAULT · {vault.label}
+                </span>
+                <span className="nb-vol-value rc-mono">
+                  {vault.usdso === null ? "—" : vault.usdso.toFixed(2)}
+                </span>
+              </div>
+
+              <div
+                className="nb-vol"
+                title="USDso traded, buys and sells added together"
+              >
+                <span className="nb-vol-label rc-pixel">VOL</span>
+                <span className="nb-vol-value rc-mono">
+                  {tradedVolume.toFixed(2)}
+                </span>
+              </div>
+            </>
           ) : null}
 
           {!isAuthenticated ? (

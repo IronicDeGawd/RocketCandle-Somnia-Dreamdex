@@ -77,10 +77,6 @@ export class MenuScene extends Phaser.Scene {
     // created with, and practice was offered a NEXT it does not have.
     this.refreshPlayButton();
 
-    // The vault decides which markets are reachable at all.
-    this.vaultUsdso = null;
-    this.refreshVault();
-
     // Create instructions
     this.add
       .text(600, 528, "AIM WITH SLIDERS · LAUNCH TO FIRE", {
@@ -123,9 +119,11 @@ export class MenuScene extends Phaser.Scene {
 
     this.publishSelectedMarket();
 
-    // A minimum arriving, or a deposit landing, changes what is reachable.
-    // refreshVault repaints and relabels once it has an answer.
-    const onChange = () => this.refreshVault();
+    // A minimum or a vault balance arriving changes what is reachable.
+    const onChange = () => {
+      this.paintMarketChips();
+      this.refreshPlayButton();
+    };
     window.addEventListener("rc-hud", onChange);
 
     this.events.once("shutdown", () =>
@@ -433,137 +431,23 @@ export class MenuScene extends Phaser.Scene {
 
     const min = game?.marketMinimums?.[marketId];
     if (!min) return null;
-    if (this.vaultUsdso === null || this.vaultUsdso === undefined) return null;
 
-    if (this.vaultUsdso >= min.safeUsdso) return null;
+    /*
+     * Against THIS market's vault, not "the" vault.
+     *
+     * Every market keeps its own - a balance read is a call on the pool - so
+     * money deposited for one pair cannot buy another. Comparing one balance
+     * against every market's minimum showed a market with an empty pool as
+     * affordable, and the buy then failed for funds it was never going to find.
+     */
+    const held = game?.marketVaults?.[marketId];
+    if (typeof held !== "number") return null;
+
+    if (held >= min.safeUsdso) return null;
     return (
       `needs ${min.safeUsdso.toFixed(2)} USDso · ` +
-      `vault has ${this.vaultUsdso.toFixed(2)}`
+      `this pool has ${held.toFixed(2)}`
     );
-  }
-
-  /** What the player has to trade with, read from the exchange vault. */
-  async refreshVault() {
-    const trading = window.rocketCandleGame?.trading;
-    if (!trading) {
-      this.vaultUsdso = null;
-      return;
-    }
-
-    try {
-      this.vaultUsdso = await trading.vaultUsdso();
-    } catch {
-      this.vaultUsdso = null;
-    }
-
-    this.paintMarketChips();
-    this.refreshPlayButton();
-  }
-
-  /**
-   * Say where the current market's terrain comes from and whether it is live.
-   *
-   * A mirrored market is called out plainly. Passing a mainnet mirror off as
-   * live trading on this network would be the one lie that discredits every
-   * other claim the game makes.
-   */
-  reportMarketStatus() {
-    if (!this.marketStatusText) return;
-
-    // The temporary notices below this panel recolour the same line, so the
-    // resting colour has to be restored here rather than assumed.
-    this.marketStatusText.setColor("#3F88C5");
-
-    if (this.marketLoading) {
-      this.marketStatusText.setText("READING THE MARKET...");
-      return;
-    }
-
-    const run = this.registry.get("marketRun");
-
-    if (!run || !run.live) {
-      this.marketStatusText.setText("SIMULATED MARKET - EXCHANGE UNREACHABLE");
-      return;
-    }
-
-    const stages = run.levels.filter((level) => level.live).length;
-    const origin = run.mirrored
-      ? "mirrored from mainnet"
-      : "live on this network";
-
-    this.marketStatusText.setText(
-      `${run.market.label} — ${stages} of ${run.levels.length} stages from real trading, ${origin}`
-    );
-  }
-
-  /**
-   * Switch markets and fetch that market's terrain.
-   *
-   * @param {string} marketId
-   */
-  selectMarket(marketId) {
-    if (this.marketLoading || marketId === this.selectedMarketId) return;
-
-    // Changing pairs while holding a position would leave the player owning
-    // one token and shooting at another's price history - the exact thing the
-    // whole design is built to avoid.
-    if (this.hasOpenPosition()) {
-      this.sayMarketLocked();
-      return;
-    }
-
-    const blocked = this.unavailableReason(marketId);
-    if (blocked) {
-      this.saySomething(blocked.toLowerCase(), "#E94F37");
-      return;
-    }
-
-    this.selectedMarketId = marketId;
-    this.registry.set("selectedMarketId", marketId);
-    this.publishSelectedMarket();
-    this.paintMarketChips();
-
-    this.registry.set("marketRunLoading", true);
-
-    MarketDataProvider.generateLiveGameLevels(marketId)
-      .then((run) => {
-        this.registry.set("marketRun", MarketDataProvider.capForPractice(run));
-      })
-      .catch(() => {
-        this.registry.set("marketRun", null);
-      })
-      .finally(() => {
-        this.registry.set("marketRunLoading", false);
-      });
-  }
-
-  /**
-   * Tell the React side which pair the player chose.
-   *
-   * The picker lives in the canvas but the trading panel lives in the page,
-   * and the panel has to buy the pair that is about to become the terrain.
-   * Uses the same window handle and event the HUD bridge uses rather than
-   * inventing a second channel.
-   */
-  publishSelectedMarket() {
-    if (typeof window === "undefined" || !window.rocketCandleGame) return;
-
-    const market = GAME_MARKETS.find((m) => m.id === this.selectedMarketId);
-    if (!market) return;
-
-    window.rocketCandleGame.selectedMarket = {
-      id: market.id,
-      symbol: market.symbol,
-      label: market.label,
-    };
-    window.dispatchEvent(new CustomEvent("rc-hud"));
-  }
-
-  /** Is the player holding a position right now? Practice runs never are. */
-  hasOpenPosition() {
-    if (typeof window === "undefined") return false;
-    const trading = window.rocketCandleGame?.trading;
-    return Boolean(trading?.isOpen?.());
   }
 
   /** Say why the picker refused, without moving anything on screen. */

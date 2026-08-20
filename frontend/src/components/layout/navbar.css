@@ -134,7 +134,15 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* On a phone the wallet trigger and the links already fill the bar. */
+.nb-vol-label { white-space: nowrap; }
+
+/* On a phone the wallet trigger and the links already fill the bar. Below the
+   tablet width the vault survives and volume goes - what you can spend beats
+   what you have spent when there is room for one. */
+@media (max-width: 900px) {
+  .nb-vol:last-of-type { display: none; }
+}
+
 @media (max-width: 720px) {
   .nb-vol { display: none; }
 }
