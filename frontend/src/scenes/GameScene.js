@@ -36,6 +36,7 @@ export class GameScene extends Phaser.Scene {
     this.totalEnemiesInLevel = 0; // Track total enemies generated
     this.maxLevels = MarketDataProvider.getTotalLevels(); // Total number of levels from data provider
     this.launchAttempts = 0; // Track total number of rockets launched across all levels
+    this.enemiesDestroyedTotal = 0; // Real kill count, cumulative across the whole run (see destroyEnemy call sites)
 
     // Level attempt system
     this.maxAttemptsPerLevel = 3; // Maximum attempts allowed per level
@@ -102,6 +103,8 @@ export class GameScene extends Phaser.Scene {
       totalAttempts: 0,
       levelAttempts: 0,
       maxAttempts: this.maxAttemptsPerLevel,
+      enemiesDestroyed: 0,
+      rocketsUsed: 0,
       level: 1,
       totalLevels: this.maxLevels,
       levelName: "",
@@ -1274,6 +1277,11 @@ export class GameScene extends Phaser.Scene {
     this.hudState.totalAttempts = this.launchAttempts;
     this.hudState.levelAttempts = this.currentLevelAttempts;
     this.hudState.maxAttempts = this.maxAttemptsPerLevel;
+    // Real counts, not a formula: rockets launched is the same cumulative
+    // counter attempts already used; enemies destroyed is its own tally kept
+    // wherever an enemy is actually removed (see destroyEnemy call sites).
+    this.hudState.enemiesDestroyed = this.enemiesDestroyedTotal;
+    this.hudState.rocketsUsed = this.launchAttempts;
     this.hudState.level = this.currentLevel + 1;
     this.hudState.totalLevels = this.maxLevels;
     this.hudState.levelName = levelData?.name ?? "";
@@ -1303,6 +1311,7 @@ export class GameScene extends Phaser.Scene {
     this.score = 0;
     this.enemiesRemaining = 0;
     this.launchAttempts = 0;
+    this.enemiesDestroyedTotal = 0;
     this.currentLevelAttempts = 0;
     this.gameOver = false;
 
@@ -2041,6 +2050,7 @@ export class GameScene extends Phaser.Scene {
     this.triggerExplosion(enemy.x, enemy.y); // Explode at enemy's position
     enemy.destroy();
     this.enemiesRemaining--;
+    this.enemiesDestroyedTotal++; // Real kill, counted where the enemy is actually removed
     this.score += 10; // Score for hitting an enemy
     this.updateHUD();
 
@@ -2202,6 +2212,7 @@ export class GameScene extends Phaser.Scene {
         this.destroyEnemy(enemy);
         this.score += 10;
         this.enemiesRemaining--;
+        this.enemiesDestroyedTotal++; // Real kill, counted where the enemy is actually removed
         enemiesDestroyed++;
       }
     });

@@ -286,15 +286,24 @@ export default function GamePage() {
         "Preparing blockchain transaction..."
       );
 
-      // Mock data for enemies destroyed and rockets used (these would come from the game)
-      const enemiesDestroyed = Math.min(
-        Math.floor(score / 1000) + adjustedLevel,
-        50
-      );
-      const rocketsUsed = Math.min(
-        Math.floor(score / 500) + adjustedLevel * 2,
-        20
-      );
+      // Real counts kept by GameScene as the run played out, read off the same
+      // bridge the trading figures below come from.
+      //
+      // By the time a run finishes, GameScene has already called clearHud(),
+      // so `hud.active` is false here even for a perfectly real run - that
+      // flag can't be used to tell "no run" apart from "run just ended".
+      // What's still reliable is whether the bridge ever published an object
+      // at all: if it never did, the counters below are not a measurement,
+      // they're just the fallback, and that has to leave a trace instead of
+      // silently going on chain as an indistinguishable real zero.
+      const hud = window.rocketCandleGame?.hud;
+      if (!hud) {
+        console.warn(
+          "⚠️ Run telemetry bridge unavailable - enemiesDestroyed/rocketsUsed were never measured for this run, submitting 0 as an unmeasured fallback"
+        );
+      }
+      const enemiesDestroyed = hud?.enemiesDestroyed ?? 0;
+      const rocketsUsed = hud?.rocketsUsed ?? 0;
 
       console.log("📤 Submitting score to blockchain:", {
         score,

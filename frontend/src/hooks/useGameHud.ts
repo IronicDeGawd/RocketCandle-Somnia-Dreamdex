@@ -47,6 +47,10 @@ export interface GameHud {
   totalAttempts: number;
   levelAttempts: number;
   maxAttempts: number;
+  /** Real kill count for the run, tallied where an enemy is actually removed. */
+  enemiesDestroyed: number;
+  /** Same value as totalAttempts, published under the name the run record uses. */
+  rocketsUsed: number;
   /** 1-based - matches the level pips on the cabinet's left rail. */
   level: number;
   totalLevels: number;
@@ -107,6 +111,8 @@ export const EMPTY_HUD: GameHud = {
   totalAttempts: 0,
   levelAttempts: 0,
   maxAttempts: 3,
+  enemiesDestroyed: 0,
+  rocketsUsed: 0,
   level: 1,
   totalLevels: 1,
   levelName: "",
