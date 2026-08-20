@@ -312,8 +312,15 @@
 
 .ts-overlay {
   position: fixed;
-  inset: 0;
-  z-index: 60;
+  /* Starts below the nav rather than under it, so the bar - and whatever a
+     player still needs from it - stays reachable while this sheet is open.
+     The sheet is deliberately not a true modal (see above), so the nav
+     stays part of the reachable page rather than being buried by it. */
+  top: var(--rc-nav-height);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: var(--rc-z-overlay);
   display: flex;
   align-items: center;
   justify-content: center;

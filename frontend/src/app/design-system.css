@@ -66,6 +66,37 @@
   /* --- Motion ------------------------------------------------------------ */
 
   --rc-press: 90ms steps(2, end);
+
+  /* --- Layout -------------------------------------------------------------
+     The nav is fixed and always on top; anything else that is also fixed
+     for the full viewport height (an overlay, a sheet) reads this instead
+     of repeating the number, so the two can never drift apart.
+     This is the nav's FULL occupied height - its inner row plus the 4px
+     ink border underneath it (--rc-border) - because that is the edge
+     anything stacked below the nav actually needs to clear. .nb-inner
+     derives its own height back out of this token rather than restating
+     a literal, so the two figures cannot disagree. */
+  --rc-nav-height: 80px;
+
+  /* --- Layers --------------------------------------------------------------
+     A small stacking scale so any two fixed-position layers can be compared
+     at a glance instead of guessing what an arbitrary number outranks. */
+  --rc-z-overlay: 60;
+  --rc-z-nav: 100;
+  --rc-z-nav-menu: 110;
+}
+
+/* navbar.css shrinks the nav's inner row to 64px under this same breakpoint
+   (--rc-nav-height - 4px border = 68px occupied there). The override lives
+   here, on :root, rather than on a nav selector, because :root is the one
+   ancestor every fixed-position consumer of this token - the nav itself,
+   the buy-in sheet's .ts-overlay in trading.css - actually shares. A nav
+   selector's media query would never reach .ts-overlay, which sits outside
+   the nav entirely. */
+@media (max-width: 480px) {
+  :root {
+    --rc-nav-height: 68px;
+  }
 }
 
 /* The scanline wash. Two dark pixels every four, which reads as a CRT at any

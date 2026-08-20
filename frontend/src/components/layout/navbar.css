@@ -10,7 +10,7 @@
   top: 0;
   left: 0;
   right: 0;
-  z-index: 100;
+  z-index: var(--rc-z-nav);
   background: var(--rc-surface);
   border-bottom: var(--rc-border);
 }
@@ -19,7 +19,10 @@
   max-width: 1280px;
   margin: 0 auto;
   padding: 0 24px;
-  height: 76px;
+  /* --rc-nav-height is the nav's FULL occupied height, including the 4px
+     ink border painted on .nb-bar underneath this row - so the inner row
+     itself is that token minus the border, at every breakpoint. */
+  height: calc(var(--rc-nav-height) - 4px);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -198,7 +201,7 @@
   width: 220px;
   padding: 12px;
   gap: 12px;
-  z-index: 110;
+  z-index: var(--rc-z-nav-menu);
 }
 
 .nb-dropdown-stats {
@@ -249,7 +252,7 @@
   right: 0;
   padding: 16px;
   gap: 10px;
-  z-index: 110;
+  z-index: var(--rc-z-nav-menu);
 }
 
 .nb-mobile-link {
@@ -292,7 +295,9 @@
 }
 
 @media (max-width: 480px) {
-  .nb-inner { padding: 0 14px; height: 64px; }
+  /* height comes from --rc-nav-height (overridden to 68px in
+     design-system.css at this same breakpoint) minus the 4px border. */
+  .nb-inner { padding: 0 14px; }
   .nb-brand-sub { display: none; }
   /* The wordmark ran underneath the connect button at this width. The mark
      alone is enough to identify the bar; the name is on the page anyway. */
