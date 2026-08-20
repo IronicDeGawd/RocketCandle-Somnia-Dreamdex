@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { GAME_MARKETS } from "@/data/DreamdexMarketFeed.js";
 import { fetchMarket } from "@/lib/dreamdex";
@@ -33,8 +33,34 @@ export type MarketVaults = Record<string, number>;
  * @param owner the connected wallet, or nothing when there is none
  */
 export function useMarketMinimums(owner?: `0x${string}` | null) {
+  /**
+   * Holds the most recent computed result so it can be republished the
+   * moment the canvas exists, without refetching.
+   *
+   * The Phaser bundle is loaded with `ssr: false`, so PhaserGame.tsx sets
+   * `window.rocketCandleGame` well after this hook's first read can finish.
+   * A read that lands before that global exists used to be thrown away
+   * outright, leaving the picker stuck on nothing (or stale data) for up to
+   * the full 60s until the next interval tick.
+   */
+  const latestRef = useRef<{
+    minimums: MarketMinimums;
+    vaults: MarketVaults;
+  } | null>(null);
+
   useEffect(() => {
     let cancelled = false;
+
+    const publish = () => {
+      if (typeof window === "undefined") return;
+      if (!window.rocketCandleGame) return;
+      const latest = latestRef.current;
+      if (!latest) return;
+
+      window.rocketCandleGame.marketMinimums = latest.minimums;
+      window.rocketCandleGame.marketVaults = latest.vaults;
+      window.dispatchEvent(new CustomEvent("rc-hud"));
+    };
 
     const read = async () => {
       const clients = createReadClients();
@@ -77,41 +103,53 @@ export function useMarketMinimums(owner?: `0x${string}` | null) {
       );
 
       if (cancelled || typeof window === "undefined") return;
-      if (!window.rocketCandleGame) return;
 
       const readable = found.filter(
         (entry): entry is readonly [string, MarketMinimum | null, number | null] =>
           Boolean(entry)
       );
 
-      window.rocketCandleGame.marketMinimums = Object.fromEntries(
-        readable
-          .filter((e): e is readonly [string, MarketMinimum, number | null] =>
-            Boolean(e[1])
-          )
-          .map(([id, min]) => [id, min])
-      );
+      latestRef.current = {
+        minimums: Object.fromEntries(
+          readable
+            .filter((e): e is readonly [string, MarketMinimum, number | null] =>
+              Boolean(e[1])
+            )
+            .map(([id, min]) => [id, min])
+        ),
+        vaults: Object.fromEntries(
+          readable
+            .filter((e): e is readonly [string, MarketMinimum | null, number] =>
+              typeof e[2] === "number"
+            )
+            .map(([id, , vault]) => [id, vault])
+        ),
+      };
 
-      window.rocketCandleGame.marketVaults = Object.fromEntries(
-        readable
-          .filter((e): e is readonly [string, MarketMinimum | null, number] =>
-            typeof e[2] === "number"
-          )
-          .map(([id, , vault]) => [id, vault])
-      );
-
-      window.dispatchEvent(new CustomEvent("rc-hud"));
+      publish();
     };
 
-    read();
+    // PhaserGame.tsx fires this the instant it sets `window.rocketCandleGame`,
+    // which can land after a read here has already finished and been
+    // dropped. Republishing the cached result (no refetch) closes that gap
+    // without a duplicate-read storm.
+    window.addEventListener("rc-game-ready", publish);
+
+    const safeRead = () =>
+      read().catch((err) => {
+        console.error("useMarketMinimums: read cycle failed", err);
+      });
+
+    safeRead();
 
     // Prices move, so a minimum read once at load goes stale. Slow on purpose:
     // this gates a choice, it is not a ticker.
-    const timer = setInterval(read, 60_000);
+    const timer = setInterval(safeRead, 60_000);
 
     return () => {
       cancelled = true;
       clearInterval(timer);
+      window.removeEventListener("rc-game-ready", publish);
     };
   }, [owner]);
 }

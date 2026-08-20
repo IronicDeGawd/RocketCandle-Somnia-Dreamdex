@@ -95,6 +95,12 @@ export default function PhaserGame({
           : undefined,
         practiceMode: !canSubmitRuns,
       };
+
+      // Tells any hook whose earlier read finished before this global
+      // existed (useMarketMinimums, notably) that it is safe to republish
+      // its cached result now, instead of waiting out the rest of a 60s
+      // interval on stale or missing data.
+      window.dispatchEvent(new CustomEvent("rc-game-ready"));
     }
 
     // Cleanup function
