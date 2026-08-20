@@ -16,3 +16,6 @@ gas-report.txt
 
 # Deployment artifacts
 deployments.json
+
+# The replacement owner key. Never commit.
+.env.newowner
