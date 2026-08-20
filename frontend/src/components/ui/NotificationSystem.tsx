@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import "./notifications.css";
+import { computeRemainingMs } from "@/lib/toastTimer";
 
 export interface Notification {
   id: string;
@@ -22,6 +23,21 @@ interface NotificationSystemProps {
 // folded into a one-line "+N more" counter until it clears.
 const MAX_VISIBLE_TOASTS = 3;
 
+// A toast's auto-dismiss countdown, so it can be paused and resumed instead
+// of just cancelled or left running.
+interface ToastTimer {
+  remainingMs: number;
+  startedAt: number;
+  timeoutId: ReturnType<typeof setTimeout> | null;
+}
+
+// Whether a toast is currently being held open by the mouse, the keyboard,
+// or both - the countdown only resumes once neither is holding it.
+interface ToastInteraction {
+  hover: boolean;
+  focused: boolean;
+}
+
 const NotificationSystem: React.FC<NotificationSystemProps> = ({
   notifications,
   onRemove,
@@ -29,15 +45,114 @@ const NotificationSystem: React.FC<NotificationSystemProps> = ({
   const [visibleNotifications, setVisibleNotifications] = useState<string[]>([]);
   const [removingNotifications, setRemovingNotifications] = useState<string[]>([]);
 
+  const timersRef = useRef<Map<string, ToastTimer>>(new Map());
+  const interactionRef = useRef<Map<string, ToastInteraction>>(new Map());
+  // The 300ms exit-animation delay between a toast being told to leave and
+  // it actually being torn out of the DOM. Tracked the same way as the
+  // auto-dismiss countdown so unmount cleanup can cancel it too - otherwise
+  // a toast mid fade-out when the whole stack unmounts (e.g. a route change)
+  // leaves an orphaned timeout that fires setters on a gone component.
+  const fadeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  const clearToastTimer = useCallback((id: string) => {
+    const timer = timersRef.current.get(id);
+    if (timer?.timeoutId != null) {
+      clearTimeout(timer.timeoutId);
+    }
+    timersRef.current.delete(id);
+    interactionRef.current.delete(id);
+  }, []);
+
   const removeNotification = useCallback((id: string) => {
+    clearToastTimer(id);
+
+    const existingFade = fadeTimersRef.current.get(id);
+    if (existingFade != null) clearTimeout(existingFade);
+
     setRemovingNotifications(prev => [...prev, id]);
 
-    setTimeout(() => {
+    const fadeTimeoutId = setTimeout(() => {
+      fadeTimersRef.current.delete(id);
       onRemove(id);
       setRemovingNotifications(prev => prev.filter(notifId => notifId !== id));
       setVisibleNotifications(prev => prev.filter(notifId => notifId !== id));
     }, 300);
-  }, [onRemove]);
+    fadeTimersRef.current.set(id, fadeTimeoutId);
+  }, [onRemove, clearToastTimer]);
+
+  // Arms (or re-arms) a toast's auto-dismiss countdown from a full duration.
+  const scheduleToastTimer = useCallback((id: string, durationMs: number) => {
+    clearToastTimer(id);
+    const timeoutId = setTimeout(() => {
+      removeNotification(id);
+    }, durationMs);
+    timersRef.current.set(id, {
+      remainingMs: durationMs,
+      startedAt: Date.now(),
+      timeoutId,
+    });
+  }, [clearToastTimer, removeNotification]);
+
+  // Freezes the countdown where it stands, so the read-so-far time isn't lost.
+  const pauseToastTimer = useCallback((id: string) => {
+    const timer = timersRef.current.get(id);
+    if (!timer || timer.timeoutId == null) return;
+    clearTimeout(timer.timeoutId);
+    timer.remainingMs = computeRemainingMs(timer.remainingMs, timer.startedAt, Date.now());
+    timer.timeoutId = null;
+  }, []);
+
+  // Picks the countdown back up from wherever it was frozen. A toast that
+  // was already fully elapsed at the moment it got paused (the hover/focus
+  // landed right as it was about to vanish) must dismiss immediately rather
+  // than sit there with no timer ever re-armed for it - otherwise it stays
+  // open forever, only closable by hand.
+  const resumeToastTimer = useCallback((id: string) => {
+    const timer = timersRef.current.get(id);
+    if (!timer || timer.timeoutId != null) return;
+    if (timer.remainingMs <= 0) {
+      removeNotification(id);
+      return;
+    }
+    timer.startedAt = Date.now();
+    timer.timeoutId = setTimeout(() => {
+      removeNotification(id);
+    }, timer.remainingMs);
+  }, [removeNotification]);
+
+  // A toast should stay held open as long as EITHER the mouse or the
+  // keyboard is on it - not just whichever let go most recently.
+  const holdToastTimer = useCallback((id: string, kind: keyof ToastInteraction, held: boolean) => {
+    let interaction = interactionRef.current.get(id);
+    if (!interaction) {
+      interaction = { hover: false, focused: false };
+      interactionRef.current.set(id, interaction);
+    }
+    interaction[kind] = held;
+
+    if (interaction.hover || interaction.focused) {
+      pauseToastTimer(id);
+    } else {
+      resumeToastTimer(id);
+    }
+  }, [pauseToastTimer, resumeToastTimer]);
+
+  // Never leave a countdown ticking (or a resolved one still registered)
+  // after the toast stack itself goes away.
+  useEffect(() => {
+    const timers = timersRef.current;
+    const interactions = interactionRef.current;
+    const fadeTimers = fadeTimersRef.current;
+    return () => {
+      timers.forEach(timer => {
+        if (timer.timeoutId != null) clearTimeout(timer.timeoutId);
+      });
+      fadeTimers.forEach(fadeTimeoutId => clearTimeout(fadeTimeoutId));
+      timers.clear();
+      interactions.clear();
+      fadeTimers.clear();
+    };
+  }, []);
 
   useEffect(() => {
     const newNotifications = notifications.filter(
@@ -48,12 +163,10 @@ const NotificationSystem: React.FC<NotificationSystemProps> = ({
       setVisibleNotifications(prev => [...prev, notif.id]);
 
       if (notif.duration && notif.duration > 0) {
-        setTimeout(() => {
-          removeNotification(notif.id);
-        }, notif.duration);
+        scheduleToastTimer(notif.id, notif.duration);
       }
     });
-  }, [notifications, visibleNotifications, removeNotification]);
+  }, [notifications, visibleNotifications, scheduleToastTimer]);
 
   const getNotificationIcon = (type: Notification['type']) => {
     switch (type) {
@@ -104,6 +217,14 @@ const NotificationSystem: React.FC<NotificationSystemProps> = ({
             ${visibleNotifications.includes(notification.id) ? 'rc-toast--visible' : ''}
             ${removingNotifications.includes(notification.id) ? 'rc-toast--removing' : ''}
           `}
+          onMouseEnter={() => holdToastTimer(notification.id, 'hover', true)}
+          onMouseLeave={() => holdToastTimer(notification.id, 'hover', false)}
+          onFocus={() => holdToastTimer(notification.id, 'focused', true)}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+              holdToastTimer(notification.id, 'focused', false);
+            }
+          }}
         >
           <div className="rc-toast-icon rc-pixel" aria-hidden="true">
             {getNotificationIcon(notification.type)}

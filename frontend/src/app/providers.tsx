@@ -7,6 +7,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
 } from "react";
 import { GAME_CONTRACT_ABI, getGameContractAddress, type PlayerStats } from "@/lib/blockchain";
 import { WagmiProvider } from "wagmi";
@@ -210,37 +211,66 @@ function InnerProviders({ children }: { children: ReactNode }) {
     }
   }, [connect, connectors, isLoading]);
 
-  const signOut = () => {
+  const signOut = useCallback(() => {
     disconnect();
     setUser(null);
     setIsAuthenticated(false);
     setPlayerStats(null);
     setWalletAddress(null);
-  };
+    setLocalConnectError(null);
+  }, [disconnect]);
   
   const invalidateLeaderboardCache = useCallback(() => {
     console.log("🧹 Invalidating leaderboard cache after game completion");
     // leaderboardCache.invalidateAll();
   }, []);
 
-  const value = {
-    user,
-    isLoading,
-    gameContract,
-    isAuthenticated,
-    playerStats,
-    walletAddress,
-    connectWallet,
-    // A live connection clears any earlier failure, so a successful retry does
-    // not leave the previous refusal on screen.
-    connectError: isConnected
-      ? null
-      : localConnectError ?? connectFailure?.message ?? null,
-    signOut,
-    refreshPlayerStats,
-    setWalletAddress,
-    invalidateLeaderboardCache,
-  };
+  // A live connection clears any earlier failure, so a successful retry does
+  // not leave the previous refusal on screen.
+  //
+  // `connectFailure` itself is a wagmi-owned object that can get a fresh
+  // identity on renders where nothing about the failure actually changed -
+  // memoizing on the object would be a no-op. Its `.message` string is what
+  // actually varies, so that's what the memo below depends on instead.
+  const connectFailureMessage = connectFailure?.message ?? null;
+  const connectError = isConnected
+    ? null
+    : localConnectError ?? connectFailureMessage;
+
+  // Every field here is a plain state value or a useCallback-wrapped
+  // function with a stable identity across a poll that doesn't change the
+  // underlying data, so this object only gets a new identity when something
+  // a consumer would actually need to see has changed.
+  const value = useMemo(
+    () => ({
+      user,
+      isLoading,
+      gameContract,
+      isAuthenticated,
+      playerStats,
+      walletAddress,
+      connectWallet,
+      connectError,
+      signOut,
+      refreshPlayerStats,
+      setWalletAddress,
+      invalidateLeaderboardCache,
+    }),
+    [
+      user,
+      isLoading,
+      gameContract,
+      isAuthenticated,
+      playerStats,
+      walletAddress,
+      connectWallet,
+      connectError,
+      signOut,
+      refreshPlayerStats,
+      setWalletAddress,
+      invalidateLeaderboardCache,
+    ]
+  );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
