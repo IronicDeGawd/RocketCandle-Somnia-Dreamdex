@@ -28,6 +28,14 @@ export const GAME_MARKETS = [
     symbol: "USDC.e:USDso",
     source: "mainnet",
     alwaysMirrored: true,
+    /*
+     * There is no USDC.e market on the testnet - the exchange lists only
+     * WBTC, WETH and SOMI there. Its price history still makes the flattest,
+     * gentlest terrain in the game, so it stays as something to play in the
+     * practice taster, where nothing is bought; buying it for real is only
+     * possible on mainnet.
+     */
+    tradesOn: "mainnet",
     label: "Stablecoin (USDC.e)",
     blurb: "Barely moves. Flat ground, gentle ride - start here.",
   },

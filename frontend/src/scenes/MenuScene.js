@@ -3,6 +3,7 @@ import {
   GAME_MARKETS,
 } from "@/data/DreamdexMarketFeed.js";
 import { MarketDataProvider } from "@/data/MarketDataProvider.js";
+import { somniaNetwork } from "@/lib/wagmi";
 
 // Redesign palette - flat, no gradients, no blur. See context/redesign board,
 // section "scenes" (LOADING / MENU / END OF RUN).
@@ -329,6 +330,20 @@ export class MenuScene extends Phaser.Scene {
     this.selectedMarketId =
       this.registry.get("selectedMarketId") || DEFAULT_MARKET_ID;
 
+    /*
+     * Never start on a market that cannot be played.
+     *
+     * The choice is remembered between visits, so a player who picked the
+     * stablecoin pair in practice would come back to it on the real screen -
+     * selected, greyed, and refusing to be deselected in place, which is a
+     * dead end rather than a warning. Only the rules that do not depend on a
+     * balance apply here: the vault has not been read yet.
+     */
+    if (this.unavailableReason(this.selectedMarketId)) {
+      this.selectedMarketId = DEFAULT_MARKET_ID;
+      this.registry.set("selectedMarketId", DEFAULT_MARKET_ID);
+    }
+
     // The preload fetch may still be running when this menu appears, so adopt
     // its pending state rather than assuming the exchange never answered.
     this.marketLoading = Boolean(this.registry.get("marketRunLoading"));
@@ -357,7 +372,7 @@ export class MenuScene extends Phaser.Scene {
   paintMarketChips() {
     this.marketChips.forEach(({ market, chip, label, blurb }) => {
       const chosen = market.id === this.selectedMarketId;
-      const short = this.shortfallFor(market.id);
+      const blocked = this.unavailableReason(market.id);
 
       /*
        * A market this vault cannot reach is shown as unreachable.
@@ -368,14 +383,12 @@ export class MenuScene extends Phaser.Scene {
        * change. Left as normal, the player picks it, presses through, and the
        * exchange refuses the order with nothing having warned them.
        */
-      if (short) {
+      if (blocked) {
         chip.setFillStyle(INK);
         chip.setStrokeStyle(3, WELL);
         label.setColor("rgba(255,255,255,0.35)");
         blurb.setColor("rgba(233,79,55,0.75)");
-        blurb.setText(
-          `needs ${short.needs.toFixed(2)} USDso · vault has ${short.has.toFixed(2)}`
-        );
+        blurb.setText(blocked);
         return;
       }
 
@@ -390,27 +403,43 @@ export class MenuScene extends Phaser.Scene {
   }
 
   /**
-   * Is this market out of reach, and by how much?
+   * Why can this market not be played right now?
    *
    * Silent about anything it does not know. An unread vault or an unread
-   * minimum must not grey out a market the player can perfectly well afford -
-   * being wrongly locked out is worse than being refused by the exchange.
+   * minimum must not lock a player out of a market they can perfectly well
+   * afford - being wrongly refused is worse than being refused by the exchange.
    *
-   * @returns what is needed and what is held, or null when it is reachable
+   * @returns a short reason, or null when the market is playable
    */
-  shortfallFor(marketId) {
+  unavailableReason(marketId) {
     if (typeof window === "undefined") return null;
 
     const game = window.rocketCandleGame;
-    // Practice buys nothing, so no minimum applies.
+    // Practice buys nothing, so neither rule below applies to it: the taster
+    // can play any terrain, including a market that does not trade here.
     if (game?.practiceMode) return null;
+
+    const market = GAME_MARKETS.find((m) => m.id === marketId);
+
+    /*
+     * A market that does not exist on this network cannot be bought at all.
+     * The stablecoin pair trades only on mainnet, and its price history is
+     * mirrored here for terrain - so it is playable in practice and greyed
+     * everywhere a real position would have to be opened.
+     */
+    if (market?.tradesOn === "mainnet" && somniaNetwork.testnet) {
+      return "not traded on testnet";
+    }
 
     const min = game?.marketMinimums?.[marketId];
     if (!min) return null;
     if (this.vaultUsdso === null || this.vaultUsdso === undefined) return null;
 
     if (this.vaultUsdso >= min.safeUsdso) return null;
-    return { needs: min.safeUsdso, has: this.vaultUsdso };
+    return (
+      `needs ${min.safeUsdso.toFixed(2)} USDso · ` +
+      `vault has ${this.vaultUsdso.toFixed(2)}`
+    );
   }
 
   /** What the player has to trade with, read from the exchange vault. */
@@ -483,12 +512,9 @@ export class MenuScene extends Phaser.Scene {
       return;
     }
 
-    const short = this.shortfallFor(marketId);
-    if (short) {
-      this.saySomething(
-        `that market needs ${short.needs.toFixed(2)} usdso - your vault has ${short.has.toFixed(2)}`,
-        "#E94F37"
-      );
+    const blocked = this.unavailableReason(marketId);
+    if (blocked) {
+      this.saySomething(blocked.toLowerCase(), "#E94F37");
       return;
     }
 
@@ -588,12 +614,9 @@ export class MenuScene extends Phaser.Scene {
     // which is worse than making the player wait a moment.
     if (this.marketLoading) return;
 
-    const short = this.shortfallFor(this.selectedMarketId);
-    if (short) {
-      this.saySomething(
-        `this market needs ${short.needs.toFixed(2)} usdso - add funds or pick a cheaper one`,
-        "#E94F37"
-      );
+    const blocked = this.unavailableReason(this.selectedMarketId);
+    if (blocked) {
+      this.saySomething(blocked.toLowerCase(), "#E94F37");
       return;
     }
 
