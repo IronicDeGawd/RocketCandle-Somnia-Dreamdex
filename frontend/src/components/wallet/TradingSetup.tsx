@@ -783,7 +783,17 @@ export default function TradingSetup({
             </span>
           </p>
         ) : authorized && vault !== null ? (
-          <p className="ts-rail-hint rc-mono">{vault.toFixed(2)} USDso ready</p>
+          /*
+           * Name the pool, not just the number.
+           *
+           * The exchange holds money per market, so this figure buys THIS pair
+           * and no other. Unlabelled it read as a wallet balance, which made
+           * the picker look broken: the rail promised 7.00 while a greyed card
+           * said its own pool held nothing, and both were true.
+           */
+          <p className="ts-rail-hint rc-mono">
+            {vault.toFixed(2)} USDso ready in the {symbol.split(":")[0]} pool
+          </p>
         ) : null}
       </div>
     );

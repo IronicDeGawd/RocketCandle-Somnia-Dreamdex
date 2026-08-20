@@ -557,9 +557,17 @@ export class MenuScene extends Phaser.Scene {
     if (typeof held !== "number") return null;
 
     if (held >= min.safeUsdso) return null;
+    /*
+     * "this market's own vault", not "this pool".
+     *
+     * A player reading the old wording saw the rail promise 7.00 USDso while a
+     * greyed card said 0.00, and had no way to know those are different
+     * pockets - it read as a bug. Saying whose vault it is teaches the rule at
+     * the one moment it matters, without a footnote nobody reads.
+     */
     return (
       `needs ${min.safeUsdso.toFixed(2)} USDso · ` +
-      `this pool has ${held.toFixed(2)}`
+      `this market's own vault has ${held.toFixed(2)}`
     );
   }
 

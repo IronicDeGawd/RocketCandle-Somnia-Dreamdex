@@ -345,7 +345,14 @@
   left: 0;
   z-index: var(--rc-z-overlay);
   display: flex;
-  align-items: center;
+  /*
+   * flex-start, not center - with margin:auto on the inner column this still
+   * centres a short sheet, but a sheet TALLER than the viewport is no longer
+   * clipped. Centred flex overflow grows in both directions, so the top of a
+   * tall panel ends up above the scroll origin and cannot be reached at all:
+   * the sheet looked like it ran off the page with no way back to its start.
+   */
+  align-items: flex-start;
   justify-content: center;
   padding: 24px;
   background: rgba(20, 22, 26, 0.72);
@@ -354,7 +361,9 @@
 
 .ts-overlay-inner {
   width: 100%;
-  max-width: 460px;
+  /* Wider than the rail column it grew out of: at 460px the same content ran
+     past the bottom of a laptop screen. Trading width for height. */
+  max-width: 760px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -395,4 +404,32 @@
   color: var(--rc-text-faint);
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Two columns once the sheet is wide enough for them.
+ *
+ * The step list and the setup fields are what make this panel tall; side by
+ * side they roughly halve it, which is the difference between fitting on a
+ * laptop screen and not. Below this width it stays a single column, because
+ * two 300px columns are worse than one readable one.
+ */
+@media (min-width: 720px) {
+  .ts-root--overlay .ts-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+
+  /* Full-width rows: prose, progress and anything that must not be halved. */
+  .ts-root--overlay .ts-body > .ts-blurb,
+  .ts-root--overlay .ts-body > .ts-progress-track,
+  .ts-root--overlay .ts-body > .ts-note,
+  .ts-root--overlay .ts-body > .ts-error,
+  .ts-root--overlay .ts-body > .ts-error-box,
+  .ts-root--overlay .ts-body > .ts-actions,
+  .ts-root--overlay .ts-body > .ts-stop,
+  .ts-root--overlay .ts-body > .ts-ready {
+    grid-column: 1 / -1;
+  }
 }
