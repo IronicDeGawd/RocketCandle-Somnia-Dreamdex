@@ -63,6 +63,9 @@ export default function TradingSetup({
     error,
     keyGas,
     keyOutOfGas,
+    keyGasFloor,
+    keySweepPreview,
+    sweepWarning,
     fuelKey,
     enable,
     revoke,
@@ -426,9 +429,11 @@ export default function TradingSetup({
                       <span className="rc-mono">
                         {keyGas !== null ? keyGas.toFixed(3) : "…"} STT
                       </span>
-                      , which is not enough to pay for its own orders. Top it up
-                      and PLAY works again. Anything unspent stays in the key,
-                      and revoking is unaffected.
+                      , under the{" "}
+                      <span className="rc-mono">{keyGasFloor.toFixed(3)} STT</span>{" "}
+                      it needs to pay for its own orders right now. Top it up
+                      and PLAY works again. Revoking hands back whatever it
+                      is not going to spend - nothing stays behind.
                     </p>
                     <button
                       onClick={fuelKey}
@@ -624,9 +629,17 @@ export default function TradingSetup({
                     disabled={busy}
                     className="rc-btn"
                   >
-                    {step === "revoking" ? "Revoking..." : "Revoke this key"}
+                    {step === "revoking"
+                      ? "Revoking..."
+                      : keySweepPreview
+                        ? `Revoke and return ${keySweepPreview.toFixed(3)} STT`
+                        : "Revoke this key"}
                   </button>
                 </div>
+
+                {sweepWarning ? (
+                  <p className="ts-error">{sweepWarning}</p>
+                ) : null}
 
                 <p className="ts-note">
                   Revoking stops the key immediately, on chain. Withdraw

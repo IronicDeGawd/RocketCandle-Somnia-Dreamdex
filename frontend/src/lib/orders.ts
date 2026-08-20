@@ -44,7 +44,14 @@ const ORDER_PLACED_TOPIC =
  */
 const GAS_FLOOR_TOKEN = 700_000n;
 const GAS_FLOOR_NATIVE_SELL = 2_000_000n;
-const GAS_FLOOR_NATIVE_BUY = 5_000_000n;
+/**
+ * Exported so the browser key's "out of gas" warning and the real
+ * transaction ceiling are read from the same number and cannot drift apart.
+ */
+export const GAS_FLOOR_NATIVE_BUY = 5_000_000n;
+
+/** Somnia's fee floor has never been observed lower than this. */
+export const MINIMUM_BASE_FEE_PER_GAS = 6_000_000_000n;
 
 function gasFloorFor(baseIsNative: boolean, isBid: boolean): bigint {
   if (!baseIsNative) return GAS_FLOOR_TOKEN;

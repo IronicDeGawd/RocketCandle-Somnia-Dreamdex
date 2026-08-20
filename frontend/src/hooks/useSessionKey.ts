@@ -29,6 +29,12 @@ import {
   peekSessionKey,
   type SessionKey,
 } from "@/lib/sessionKey";
+import {
+  createTradingClients,
+  GAS_FLOOR_NATIVE_BUY,
+  MINIMUM_BASE_FEE_PER_GAS,
+} from "@/lib/orders";
+import { sweepAmount } from "@/lib/gasSweep";
 
 /**
  * Setting up trading without popups, and taking it back.
@@ -132,11 +138,36 @@ async function runSteps(
  * buy-in died with "account does not exist": to the network, an address that
  * has never paid for anything does not exist at all.
  *
- * FUEL covers a run's worth of orders with room to spare; FLOOR is where a key
- * is close enough to empty that it needs topping up before the next run.
+ * FUEL covers a run's worth of orders with room to spare; the floor a key is
+ * checked against is derived below, not fixed - mainnet fees are not
+ * testnet's, and a constant is either too low to cover a real buy or too
+ * high to stop nagging a key that holds plenty.
  */
-const GAS_FUEL = parseEther("0.5");
-const GAS_FLOOR = parseEther("0.15");
+const GAS_FUEL = parseEther("0.15");
+
+/** The floor's headroom over the worst-case single-transaction cost. */
+const GAS_FLOOR_MULTIPLIER = 3n;
+const GAS_FLOOR_DIVISOR = 2n;
+
+/**
+ * The most a fee read can be trusted to say right now, or the fallback if
+ * the chain gives nothing back.
+ */
+async function currentFeePerGas(
+  publicClient: NonNullable<ReturnType<typeof usePublicClient>>
+): Promise<bigint> {
+  try {
+    const fees = await publicClient.estimateFeesPerGas();
+    return fees.maxFeePerGas ?? MINIMUM_BASE_FEE_PER_GAS;
+  } catch {
+    return MINIMUM_BASE_FEE_PER_GAS;
+  }
+}
+
+/** x1.5 on the same limit a real native-base buy is sent with. */
+function deriveGasFloor(feePerGas: bigint): bigint {
+  return (GAS_FLOOR_NATIVE_BUY * feePerGas * GAS_FLOOR_MULTIPLIER) / GAS_FLOOR_DIVISOR;
+}
 
 export type SessionStep =
   | "idle"
@@ -159,7 +190,16 @@ export interface UseSessionKey {
   keyGas: number | null;
   /** True when the key is too close to empty to pay for another run's orders. */
   keyOutOfGas: boolean;
+  /** The derived floor `keyOutOfGas` is checked against, in native STT. */
+  keyGasFloor: number;
+  /** What revoking right now would hand back, in native STT. */
+  keySweepPreview: number | null;
+  /** Set once a sweep - inside revoke or on its own - actually lands. */
+  sweptAmount: number | null;
+  /** A sweep that failed during revoke, non-fatal: the revoke still went through. */
+  sweepWarning: string | null;
   fuelKey: () => Promise<void>;
+  sweepKey: () => Promise<void>;
   /**
    * Set up trading, and top the vault up later through the same path.
    *
@@ -188,17 +228,34 @@ export function useSessionKey(symbol?: string): UseSessionKey {
   const [error, setError] = useState<string | null>(null);
   const [market, setMarket] = useState<MarketMeta | null>(null);
   const [keyGasRaw, setKeyGasRaw] = useState<bigint | null>(null);
+  const [feePerGasRaw, setFeePerGasRaw] = useState<bigint>(
+    MINIMUM_BASE_FEE_PER_GAS
+  );
+  const [keyGasFloorRaw, setKeyGasFloorRaw] = useState<bigint>(
+    deriveGasFloor(MINIMUM_BASE_FEE_PER_GAS)
+  );
+  const [sweptAmount, setSweptAmount] = useState<number | null>(null);
+  const [sweepWarning, setSweepWarning] = useState<string | null>(null);
 
   useEffect(() => {
     setSessionKey(peekSessionKey());
   }, []);
 
-  /** Read what the browser key holds to pay its own transaction fees with. */
+  /**
+   * Read what the browser key holds to pay its own transaction fees with,
+   * and re-derive the floor it is checked against - mainnet fees move, so
+   * this is the one place that recomputes both together.
+   */
   const refreshKeyGas = useCallback(
     async (operator: `0x${string}`) => {
       if (!publicClient) return null;
-      const balance = await publicClient.getBalance({ address: operator });
+      const [balance, feePerGas] = await Promise.all([
+        publicClient.getBalance({ address: operator }),
+        currentFeePerGas(publicClient),
+      ]);
       setKeyGasRaw(balance);
+      setFeePerGasRaw(feePerGas);
+      setKeyGasFloorRaw(deriveGasFloor(feePerGas));
       return balance;
     },
     [publicClient]
@@ -235,7 +292,10 @@ export function useSessionKey(symbol?: string): UseSessionKey {
         account: signer.account!,
         chain: somniaNetwork,
       });
-      await publicClient!.waitForTransactionReceipt({ hash });
+      const receipt = await publicClient!.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") {
+        throw new Error("The fuelling transaction reverted");
+      }
       await refreshKeyGas(operator);
     },
     [publicClient, address, refreshKeyGas]
@@ -477,6 +537,38 @@ export function useSessionKey(symbol?: string): UseSessionKey {
     }
   }, [walletClient, publicClient, address, chainId, switchChainAsync, sendGas]);
 
+  /**
+   * Hand back what the key is not going to spend, straight from the key -
+   * the key already has its own signer, so this needs no wallet popup and
+   * no owner signature.
+   */
+  const sweepKey = useCallback(async () => {
+    const key = peekSessionKey();
+    if (!key || !publicClient || !address) return;
+
+    const [balance, feePerGas] = await Promise.all([
+      publicClient.getBalance({ address: key.address }),
+      currentFeePerGas(publicClient),
+    ]);
+    const amount = sweepAmount(balance, feePerGas);
+    if (amount === 0n) return;
+
+    const { walletClient: keySigner } = createTradingClients(key.privateKey);
+    const hash = await keySigner.sendTransaction({
+      to: address,
+      value: amount,
+      account: keySigner.account!,
+      chain: somniaNetwork,
+    });
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    if (receipt.status !== "success") {
+      throw new Error("The sweep transaction reverted");
+    }
+
+    setSweptAmount(Number(formatEther(amount)));
+    await refreshKeyGas(key.address);
+  }, [publicClient, address, refreshKeyGas]);
+
   const revoke = useCallback(
     async (symbol: string) => {
       if (!walletClient || !publicClient || !address) return;
@@ -485,11 +577,31 @@ export function useSessionKey(symbol?: string): UseSessionKey {
       if (!key) return;
 
       setError(null);
+      setSweepWarning(null);
       setStep("revoking");
 
       try {
         const meta = market ?? (await fetchMarket(symbol));
         if (!meta) throw new Error(`Market ${symbol} not found`);
+
+        /*
+         * Sweep, then revoke, then forget - in that order and no other.
+         *
+         * A failed sweep changes nothing and can be retried, so it must not
+         * block the revoke: losing the ability to revoke is worse than
+         * losing the key's leftover gas. Revoking first would be the
+         * dangerous order - the leftover becomes unrecoverable the instant
+         * the key is forgotten.
+         */
+        try {
+          await sweepKey();
+        } catch (e) {
+          console.error("Sweep before revoke failed", e);
+          setSweepWarning(
+            (e as Error).message?.split("\n")[0] ??
+              "Could not return the key's leftover gas - retry later"
+          );
+        }
 
         /*
          * Checked, not merely awaited.
@@ -523,7 +635,15 @@ export function useSessionKey(symbol?: string): UseSessionKey {
         setError((e as Error).message?.split("\n")[0] ?? "Revoke failed");
       }
     },
-    [walletClient, publicClient, address, chainId, market, refreshAuthorization]
+    [
+      walletClient,
+      publicClient,
+      address,
+      chainId,
+      market,
+      refreshAuthorization,
+      sweepKey,
+    ]
   );
 
   /** Take the working capital back out of the vault. Owner only, by design. */
@@ -560,8 +680,16 @@ export function useSessionKey(symbol?: string): UseSessionKey {
     error,
     market,
     keyGas: keyGasRaw === null ? null : Number(formatEther(keyGasRaw)),
-    keyOutOfGas: keyGasRaw !== null && keyGasRaw < GAS_FLOOR,
+    keyOutOfGas: keyGasRaw !== null && keyGasRaw < keyGasFloorRaw,
+    keyGasFloor: Number(formatEther(keyGasFloorRaw)),
+    keySweepPreview:
+      keyGasRaw === null
+        ? null
+        : Number(formatEther(sweepAmount(keyGasRaw, feePerGasRaw))),
+    sweptAmount,
+    sweepWarning,
     fuelKey,
+    sweepKey,
     enable,
     revoke,
     withdrawAll,
