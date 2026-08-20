@@ -71,8 +71,17 @@ export default function TradingSetup({
     enable,
     revoke,
     withdrawAll,
+    depositFor,
+    sweepHome,
   } = useSessionKey(symbol);
-  const { bridge, snapshot, refresh } = useTradingSession(symbol);
+  const { bridge, snapshot, refresh } = useTradingSession(symbol, {
+    // Adapting to what the bridge expects: no symbol (this hook is already
+    // scoped to one), and a number rather than the string `depositFor` takes
+    // - the run-setup screen (`vault-as-transit.md` §1) hands the bridge a
+    // number, so the string conversion happens once, here, at the seam.
+    depositCommitment: (amountUsdso) => depositFor(symbol, String(amountUsdso)),
+    sweepHome: () => sweepHome(symbol),
+  });
   const exits = useExitPlan();
   // Starts closed. This panel used to be a door the player could ignore; it is
   // now the start button, so folding it away would hide the only way into a

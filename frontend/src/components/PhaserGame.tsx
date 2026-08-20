@@ -189,6 +189,21 @@ declare global {
        * another - so there is no single "the vault" to compare against.
        */
       marketVaults?: import("@/hooks/useMarketMinimums").MarketVaults;
+      /**
+       * Both sides of each market's own vault, kept for the recovery path
+       * only (see `lib/recovery.ts` and `vault-as-transit.md` §5) - nothing
+       * gates on this. `marketVaults` above stays quote-only and is what
+       * `MenuScene.js` and `useMarketVault.ts` still read.
+       */
+      marketVaultSides?: import("@/hooks/useMarketMinimums").MarketVaultSides;
+      /**
+       * This wallet's own USDso balance, read once per cycle.
+       *
+       * The one number every gate compares against from here on - "does your
+       * wallet hold enough" rather than "does this specific pool hold
+       * enough". Undefined before it has been read even once.
+       */
+      walletUsdso?: number;
       /** The exits chosen on the menu, which GameScene enforces. */
       exitPlan?: import("@/hooks/useGameHud").ExitPlan;
     };

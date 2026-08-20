@@ -13,6 +13,22 @@ import {
 } from "@/lib/tradingBridge";
 
 /**
+ * The owner-signed callbacks a bridge needs to fund and unwind a run.
+ *
+ * `useSessionKey` is the only place these are implemented, and it holds its
+ * own `step`/`error` state - a second instance of that hook here just to get
+ * these two functions would give the panel and this hook two disagreeing
+ * views of the same setup flow. So the caller (`TradingSetup.tsx`, which
+ * already holds the one `useSessionKey` instance) passes them in instead.
+ */
+export interface TradingSessionCallbacks {
+  /** `useSessionKey().depositFor`, bound to this page's symbol. */
+  depositCommitment?: (amountUsdso: number) => Promise<void>;
+  /** `useSessionKey().sweepHome`, bound to this page's symbol. */
+  sweepHome?: () => Promise<{ quote: number; base: number }>;
+}
+
+/**
  * Hands the game a way to trade, or doesn't.
  *
  * If the wallet is connected, a session key exists and the vault is funded,
@@ -20,7 +36,10 @@ import {
  * and plays as practice. There is no half-state: a run either has a position or
  * it does not.
  */
-export function useTradingSession(symbol: string) {
+export function useTradingSession(
+  symbol: string,
+  callbacks: TradingSessionCallbacks = {}
+) {
   const { address } = useAccount();
   // Only ever used to rest a stop on the exchange. Every trade during a run is
   // signed by the session key instead, so no prompt interrupts play.
@@ -30,6 +49,31 @@ export function useTradingSession(symbol: string) {
   const [market, setMarket] = useState<MarketMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const buildingRef = useRef(false);
+  const { depositCommitment, sweepHome } = callbacks;
+
+  /*
+   * `TradingSetup.tsx` builds a fresh `{ depositCommitment, sweepHome }`
+   * object with fresh arrow functions on every render (it has to - they
+   * close over `symbol` and the amount typed into the field). If `build`
+   * depended on those functions directly, it would get a new identity on
+   * every render, the effect below would refire, and each refire pays for
+   * a `fetchMarket` request and an on-chain `recover()` read - an unbounded
+   * loop of network and RPC calls for as long as this panel is mounted,
+   * with a bridge identity that never settles under the game.
+   *
+   * Assigning through a ref on every render, the same way `useVaultReturn`
+   * holds its `sweepHome`, keeps the callbacks out of `build`'s dependency
+   * array entirely while still reading the latest ones: the assignment
+   * below runs during render, before `build` is ever called, so a
+   * genuinely new callback (say the wallet reconnects and `depositFor` is
+   * rebuilt against a new wallet client) is picked up the next time a run
+   * actually deposits or sweeps - it is never left holding a stale closure
+   * over a dead wallet client.
+   */
+  const depositCommitmentRef = useRef(depositCommitment);
+  depositCommitmentRef.current = depositCommitment;
+  const sweepHomeRef = useRef(sweepHome);
+  sweepHomeRef.current = sweepHome;
 
   const build = useCallback(async () => {
     if (buildingRef.current) return;
@@ -53,6 +97,8 @@ export function useTradingSession(symbol: string) {
         owner: address,
         ownerWallet,
         onChange: setSnapshot,
+        depositCommitment: depositCommitmentRef.current,
+        sweepHome: sweepHomeRef.current,
       });
       setBridge(built);
       setError(null);
