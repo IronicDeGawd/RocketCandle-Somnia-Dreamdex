@@ -163,15 +163,15 @@
 .sc-loss { color: var(--rc-red); }
 .sc-row-right { color: var(--rc-white); }
 
-.sc-row--you {
-  background: var(--rc-red);
+.sc-row.sc-row--you {
+  background: var(--rc-blue);
   border: var(--rc-border-thin);
   margin: -1px 0;
 }
 
 .sc-row--you .sc-row-left,
 .sc-row--you .sc-row-right {
-  color: var(--rc-white);
+  color: var(--rc-ink);
 }
 
 /* --- Loading skeleton -------------------------------------------------------- */

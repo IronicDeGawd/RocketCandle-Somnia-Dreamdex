@@ -383,6 +383,7 @@
 
 .gc-rail-pnl {
   font-size: 18px;
+  text-shadow: 3px 3px 0 var(--rc-ink);
 }
 
 .gc-rail-actions {
