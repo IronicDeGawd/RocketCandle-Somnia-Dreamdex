@@ -30,6 +30,41 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
         address player;
         uint16 enemiesDestroyed;
         uint16 rocketsUsed;
+        /*
+         * The trade that paid for the run.
+         *
+         * A run and its trade were two records with nothing joining them: the
+         * contract stored the score, an off-chain service stored the trade, and
+         * showing them together meant matching on timestamps and hoping. Held
+         * here so the run IS the trade.
+         *
+         * uint128 and int128 share one slot, which on Somnia is 200,000 gas
+         * rather than the 400,000 two slots would cost. Both are USDso at 18
+         * decimals, so uint128 tops out around 3.4e20 USDso - a range no player
+         * will reach, and one the guards below refuse to truncate.
+         */
+        uint128 stakeUsdso;
+        int128 pnlUsdso;
+    }
+
+    /**
+     * @dev Everything the attestation service signs about one finished run.
+     *
+     * The field order here is the order in RUN_TYPEHASH, after the player. A
+     * signature is computed over exactly this sequence, so the two must be read
+     * together - a reordering that still compiles produces "Bad attestation"
+     * with nothing pointing at the cause.
+     */
+    struct RunClaim {
+        uint256 score;
+        uint256 level;
+        uint256 gameTime;
+        uint16 enemiesDestroyed;
+        uint16 rocketsUsed;
+        uint128 stakeUsdso;
+        int128 pnlUsdso;
+        uint256 nonce;
+        uint256 deadline;
     }
 
     struct LeaderboardEntry {
@@ -40,8 +75,41 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
 
     // Storage
     mapping(address => GameSession[]) public playerHistory;
-    mapping(uint256 => LeaderboardEntry[]) public weeklyLeaderboards;
     mapping(uint256 => bool) public weeklyRewardsClaimed;
+
+    /*
+     * The weekly board, keyed rather than scanned.
+     *
+     * This was an array searched linearly for the player, inside submitScore -
+     * a write path a player pays for. Somnia charges 1,000,000 gas to touch a
+     * slot not recently accessed, so the cost grew by up to a million per
+     * player already on the board: the thousandth player of a week would have
+     * paid about 6 SOMI to submit one score, and around fifteen thousand it
+     * exceeds the block gas limit entirely.
+     *
+     * Keyed by player, the write touches only that player's own slots - which
+     * their own transaction warms anyway - and costs the same whether they are
+     * the first entrant of the week or the ten thousandth.
+     */
+    mapping(uint256 => mapping(address => uint256)) public weeklyBest;
+
+    /*
+     * Who has played each week, for enumeration only.
+     *
+     * Appended once, on a player's first run of the week. Nothing reads it in a
+     * write path; putting a scan back in one is the mistake this replaced.
+     */
+    mapping(uint256 => address[]) public weeklyPlayers;
+
+    /*
+     * A player's best score ever.
+     *
+     * getPlayerStats used to derive this by looping every session the player
+     * had ever recorded. A view costs the player nothing, but each session read
+     * is a cold slot, so past a few dozen games the call approached the limit an
+     * RPC will answer and the stats line silently stopped arriving.
+     */
+    mapping(address => uint256) public bestScoreOf;
 
     // Events
     event GameCompleted(
@@ -76,7 +144,7 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
     /// @dev Field order must match the attestation service exactly.
     bytes32 private constant RUN_TYPEHASH =
         keccak256(
-            "Run(address player,uint256 score,uint256 level,uint256 gameTime,uint16 enemiesDestroyed,uint16 rocketsUsed,uint256 nonce,uint256 deadline)"
+            "Run(address player,uint256 score,uint256 level,uint256 gameTime,uint16 enemiesDestroyed,uint16 rocketsUsed,uint128 stakeUsdso,int128 pnlUsdso,uint256 nonce,uint256 deadline)"
         );
 
     /// @dev Address whose signature this contract will accept for a run.
@@ -120,69 +188,73 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
      * @dev Submit game score and receive WICK tokens
      */
     function submitScore(
-        uint256 _score,
-        uint256 _level,
-        uint256 _gameTime,
-        uint16 _enemiesDestroyed,
-        uint16 _rocketsUsed,
-        uint256 _nonce,
-        uint256 _deadline,
+        RunClaim calldata _run,
         bytes calldata _signature
     ) external nonReentrant whenNotPaused {
         // A player used to be able to report whatever score they liked. Now the
         // numbers have to arrive countersigned by the attestation service, and
         // each signature spends a nonce so the same run cannot be claimed twice.
-        require(block.timestamp <= _deadline, "Attestation expired");
-        require(!usedRunNonces[_nonce], "Run already claimed");
+        require(block.timestamp <= _run.deadline, "Attestation expired");
+        require(!usedRunNonces[_run.nonce], "Run already claimed");
 
         bytes32 digest = _hashTypedDataV4(
             keccak256(
                 abi.encode(
                     RUN_TYPEHASH,
                     msg.sender,
-                    _score,
-                    _level,
-                    _gameTime,
-                    _enemiesDestroyed,
-                    _rocketsUsed,
-                    _nonce,
-                    _deadline
+                    _run.score,
+                    _run.level,
+                    _run.gameTime,
+                    _run.enemiesDestroyed,
+                    _run.rocketsUsed,
+                    _run.stakeUsdso,
+                    _run.pnlUsdso,
+                    _run.nonce,
+                    _run.deadline
                 )
             )
         );
         require(digest.recover(_signature) == runAttestor, "Bad attestation");
 
-        usedRunNonces[_nonce] = true;
+        usedRunNonces[_run.nonce] = true;
 
-        require(_score > 0, "Invalid score");
-        require(_level > 0 && _level <= MAX_LEVEL, "Invalid level");
-        require(_gameTime >= MIN_GAME_TIME, "Game too short");
-        require(_enemiesDestroyed > 0, "Must destroy enemies");
-        require(_rocketsUsed > 0, "Must use rockets");
+        require(_run.score > 0, "Invalid score");
+        require(_run.level > 0 && _run.level <= MAX_LEVEL, "Invalid level");
+        require(_run.gameTime >= MIN_GAME_TIME, "Game too short");
+        require(_run.enemiesDestroyed > 0, "Must destroy enemies");
+        require(_run.rocketsUsed > 0, "Must use rockets");
 
         // Basic anti-cheat validation
-        require(isScoreValid(_score, _gameTime), "Suspicious score");
+        require(isScoreValid(_run.score, _run.gameTime), "Suspicious score");
 
         // Create game session
         GameSession memory session = GameSession({
-            score: _score,
-            level: _level,
-            gameTime: _gameTime,
+            score: _run.score,
+            level: _run.level,
+            gameTime: _run.gameTime,
             timestamp: block.timestamp,
             player: msg.sender,
-            enemiesDestroyed: _enemiesDestroyed,
-            rocketsUsed: _rocketsUsed
+            enemiesDestroyed: _run.enemiesDestroyed,
+            rocketsUsed: _run.rocketsUsed,
+            stakeUsdso: _run.stakeUsdso,
+            pnlUsdso: _run.pnlUsdso
         });
 
         // Store in player history
         playerHistory[msg.sender].push(session);
 
+        // Kept rather than derived. Deriving it meant looping every session a
+        // player had ever recorded, and each of those reads is a cold slot.
+        if (_run.score > bestScoreOf[msg.sender]) {
+            bestScoreOf[msg.sender] = _run.score;
+        }
+
         // Update weekly leaderboard
         uint256 currentWeek = getCurrentWeek();
-        updateWeeklyLeaderboard(currentWeek, msg.sender, _score);
+        updateWeeklyLeaderboard(currentWeek, msg.sender, _run.score);
 
         // Calculate and award tokens from treasury
-        uint256 tokensEarned = calculateTokenReward(_score, _level);
+        uint256 tokensEarned = calculateTokenReward(_run.score, _run.level);
         if (tokensEarned > 0 && balanceOf(address(this)) >= tokensEarned) {
             _transfer(address(this), msg.sender, tokensEarned);
             emit TokensEarned(msg.sender, tokensEarned);
@@ -196,10 +268,10 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
 
         emit GameCompleted(
             msg.sender,
-            _score,
-            _level,
-            _gameTime,
-            _enemiesDestroyed
+            _run.score,
+            _run.level,
+            _run.gameTime,
+            _run.enemiesDestroyed
         );
     }
 
@@ -373,80 +445,81 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
     }
 
     /**
-     * @dev Update weekly leaderboard
+     * @dev Record a player's best score for the week.
      */
     function updateWeeklyLeaderboard(
         uint256 _week,
         address _player,
         uint256 _score
     ) internal {
-        LeaderboardEntry[] storage leaderboard = weeklyLeaderboards[_week];
-
-        // Check if player already exists in leaderboard
-        bool playerExists = false;
-        for (uint256 i = 0; i < leaderboard.length; i++) {
-            if (leaderboard[i].player == _player) {
-                if (_score > leaderboard[i].score) {
-                    leaderboard[i].score = _score;
-                    leaderboard[i].timestamp = block.timestamp;
-                }
-                playerExists = true;
-                break;
-            }
+        /*
+         * Two slot touches, whoever the player is.
+         *
+         * This used to search the whole week's array for the player. On Somnia a
+         * slot nobody has touched lately costs 1,000,000 gas, so that search
+         * charged up to a million per player already on the board - a bill the
+         * last arrivals of a busy week paid on behalf of everyone before them,
+         * and one that passes the block gas limit at around fifteen thousand.
+         */
+        if (weeklyBest[_week][_player] == 0) {
+            // First run of the week for this player: remember them so the board
+            // can still be enumerated. Appended once, never scanned.
+            weeklyPlayers[_week].push(_player);
         }
 
-        // Add new player if not exists
-        if (!playerExists) {
-            leaderboard.push(
-                LeaderboardEntry({
-                    player: _player,
-                    score: _score,
-                    timestamp: block.timestamp
-                })
-            );
+        if (_score > weeklyBest[_week][_player]) {
+            weeklyBest[_week][_player] = _score;
         }
 
         emit WeeklyLeaderboardUpdated(_week, _player, _score);
     }
 
+    /** @dev How many players have a score this week. */
+    function getWeeklyPlayerCount(
+        uint256 _week
+    ) external view returns (uint256) {
+        return weeklyPlayers[_week].length;
+    }
+
     /**
-     * @dev Get weekly top scores
+     * @dev A week's board, in the order players first appeared.
+     *
+     * Unsorted on purpose. This used to bubble sort in memory, quadratic in the
+     * entries requested, with its own comment apologising for it - and ordering
+     * is work the page can do for nothing once the call has returned.
+     *
+     * Paged, because a week with thousands of players is not a call any node
+     * will answer in one piece.
+     *
+     * @param _offset where to start in the week's player list
+     * @param _limit how many to return from there
      */
-    function getWeeklyTopScores(
+    function getWeeklyScores(
         uint256 _week,
+        uint256 _offset,
         uint256 _limit
     ) external view returns (LeaderboardEntry[] memory) {
-        LeaderboardEntry[] storage leaderboard = weeklyLeaderboards[_week];
-        uint256 length = leaderboard.length < _limit
-            ? leaderboard.length
-            : _limit;
+        address[] storage players = weeklyPlayers[_week];
 
-        if (length == 0) {
-            return new LeaderboardEntry[](0);
+        if (_offset >= players.length) return new LeaderboardEntry[](0);
+
+        uint256 remaining = players.length - _offset;
+        uint256 count = remaining < _limit ? remaining : _limit;
+
+        LeaderboardEntry[] memory entries = new LeaderboardEntry[](count);
+        for (uint256 i = 0; i < count; i++) {
+            address player = players[_offset + i];
+            entries[i] = LeaderboardEntry({
+                player: player,
+                score: weeklyBest[_week][player],
+                // The board keeps a best score, not the moment it was set. A
+                // timestamp per entry is another slot per player for something
+                // nothing displays.
+                timestamp: 0
+            });
         }
 
-        // Simple sorting - in production, consider more efficient sorting
-        LeaderboardEntry[] memory sortedEntries = new LeaderboardEntry[](
-            length
-        );
-
-        // Copy entries
-        for (uint256 i = 0; i < leaderboard.length && i < _limit; i++) {
-            sortedEntries[i] = leaderboard[i];
-        }
-
-        // Bubble sort by score (descending)
-        for (uint256 i = 0; i < length - 1; i++) {
-            for (uint256 j = 0; j < length - i - 1; j++) {
-                if (sortedEntries[j].score < sortedEntries[j + 1].score) {
-                    LeaderboardEntry memory temp = sortedEntries[j];
-                    sortedEntries[j] = sortedEntries[j + 1];
-                    sortedEntries[j + 1] = temp;
-                }
-            }
-        }
-
-        return sortedEntries;
+        return entries;
     }
 
     /**
@@ -459,16 +532,12 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
         view
         returns (uint256 totalGames, uint256 bestScore, uint256 totalTokens)
     {
-        GameSession[] storage sessions = playerHistory[_player];
-        totalGames = sessions.length;
-        bestScore = 0;
-
-        for (uint256 i = 0; i < sessions.length; i++) {
-            if (sessions[i].score > bestScore) {
-                bestScore = sessions[i].score;
-            }
-        }
-
+        // Read, not derived. The loop this replaced touched one cold slot per
+        // session, so a player with a few dozen games could push this view past
+        // what an RPC will answer - and the stats line simply stopped arriving,
+        // with no error to explain why.
+        totalGames = playerHistory[_player].length;
+        bestScore = bestScoreOf[_player];
         totalTokens = balanceOf(_player);
     }
 
@@ -491,6 +560,72 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
     modifier whenNotPaused() {
         require(!paused, "Contract is paused");
         _;
+    }
+
+    // --- Carrying players across a redeploy ------------------------------
+    //
+    // A new deployment is a new token contract: every balance and every score
+    // starts empty. That is harmless while only the developers have played, and
+    // unacceptable once it is not - so the recovery path exists before it is
+    // needed rather than after.
+    //
+    // It is a window, not a permanent power. While open the owner can seed a
+    // player's best score and hand them WICK from the treasury; sealing it is
+    // irreversible, and a sealed contract has no path to either.
+
+    /// @dev True until the owner seals it, after which it can never reopen.
+    bool public migrationOpen = true;
+
+    event PlayerMigrated(address indexed player, uint256 bestScore, uint256 wick);
+    event MigrationSealed(uint256 at);
+
+    /**
+     * @dev Carry one player's standing over from a previous deployment.
+     *
+     * Deliberately narrow. It restores the best score and moves WICK out of the
+     * treasury - it does not mint, so nothing here can exceed what the treasury
+     * already holds, and it cannot fabricate game history: the sessions
+     * themselves stay on the old contract, where they remain readable.
+     *
+     * @param _player who is being carried over
+     * @param _bestScore their best score on the previous deployment
+     * @param _wick WICK to hand them from the treasury, or zero
+     */
+    function migratePlayer(
+        address _player,
+        uint256 _bestScore,
+        uint256 _wick
+    ) external onlyOwner {
+        require(migrationOpen, "Migration sealed");
+        require(_player != address(0), "Invalid player");
+
+        // Never downgrade somebody who has already played here.
+        if (_bestScore > bestScoreOf[_player]) {
+            bestScoreOf[_player] = _bestScore;
+        }
+
+        if (_wick > 0) {
+            require(
+                balanceOf(address(this)) >= _wick,
+                "Insufficient treasury"
+            );
+            _transfer(address(this), _player, _wick);
+        }
+
+        emit PlayerMigrated(_player, _bestScore, _wick);
+    }
+
+    /**
+     * @dev Close the window for good.
+     *
+     * One way on purpose. A migration window that can be reopened is just an
+     * owner mint with extra steps, and the point of sealing it is that players
+     * can verify it is shut.
+     */
+    function sealMigration() external onlyOwner {
+        require(migrationOpen, "Already sealed");
+        migrationOpen = false;
+        emit MigrationSealed(block.timestamp);
     }
 
     function emergencyTokenTransfer(

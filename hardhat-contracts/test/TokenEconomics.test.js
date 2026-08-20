@@ -25,6 +25,8 @@ describe("Token economics", function () {
       { name: "gameTime", type: "uint256" },
       { name: "enemiesDestroyed", type: "uint16" },
       { name: "rocketsUsed", type: "uint16" },
+      { name: "stakeUsdso", type: "uint128" },
+      { name: "pnlUsdso", type: "int128" },
       { name: "nonce", type: "uint256" },
       { name: "deadline", type: "uint256" },
     ],
@@ -32,8 +34,14 @@ describe("Token economics", function () {
 
   let nextNonce = 1;
 
-  async function playRun(player, score, level = 3) {
+  /**
+   * @param options.stakeUsdso raw USDso staked on the run, if it was for keeps
+   * @param options.pnlUsdso what the trade made or lost, raw
+   */
+  async function playRun(player, score, level = 3, options = {}) {
     const nonce = nextNonce++;
+    const stakeUsdso = options.stakeUsdso ?? 0n;
+    const pnlUsdso = options.pnlUsdso ?? 0n;
     const deadline = (await time.latest()) + 600;
     const domain = {
       name: "RocketCandle",
@@ -48,13 +56,16 @@ describe("Token economics", function () {
       gameTime: 120,
       enemiesDestroyed: 10,
       rocketsUsed: 8,
+      stakeUsdso,
+      pnlUsdso,
       nonce,
       deadline,
     };
     const signature = await attestor.signTypedData(domain, RUN_TYPES, run);
-    await game
-      .connect(player)
-      .submitScore(score, level, 120, 10, 8, nonce, deadline, signature);
+
+    // The run goes over as one struct; the player is recovered from the signer.
+    const { player: _player, ...claim } = run;
+    await game.connect(player).submitScore(claim, signature);
   }
 
   /** Play runs until this player holds at least `target` WICK. */

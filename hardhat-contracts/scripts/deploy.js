@@ -71,6 +71,17 @@ async function main() {
   console.log(`  2. frontend/.env    NEXT_PUBLIC_GAME_CONTRACT_ADDRESS=${contractAddress}`);
   console.log("  3. Restart the attestation service so it signs for this address.");
 
+  /*
+   * What it cost, from the receipt.
+   *
+   * This recorded the transaction's gas LIMIT, which is a cap rather than a
+   * charge - so the file claimed 62,625,334 against a receipt of 41,750,223 and
+   * anybody budgeting a mainnet deploy from it was out by 50%. On Somnia, where
+   * bytecode alone is 3,125 gas a byte, that is the number that matters.
+   */
+  const deployReceipt = await rocketCandleGame.deploymentTransaction().wait();
+  console.log(`⛽ Deploy gas used: ${deployReceipt.gasUsed.toString()}`);
+
   // Save deployment info
   const deploymentInfo = {
     network: hre.network.name,
@@ -78,8 +89,9 @@ async function main() {
     deployer: deployer.address,
     timestamp: new Date().toISOString(),
     transactionHash: rocketCandleGame.deploymentTransaction().hash,
-    blockNumber: rocketCandleGame.deploymentTransaction().blockNumber,
-    gasUsed: rocketCandleGame.deploymentTransaction().gasLimit?.toString(),
+    blockNumber: deployReceipt.blockNumber,
+    gasUsed: deployReceipt.gasUsed.toString(),
+    gasLimit: rocketCandleGame.deploymentTransaction().gasLimit?.toString(),
     tokenDetails: {
       name: name,
       symbol: symbol,

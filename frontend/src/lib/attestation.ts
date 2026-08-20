@@ -16,6 +16,16 @@ export interface AttestedRun {
   gameTime: number;
   enemiesDestroyed: number;
   rocketsUsed: number;
+  /*
+   * The trade the run was played on, as raw USDso strings.
+   *
+   * Strings because they are 128-bit and a JSON number loses precision long
+   * before that - a stake sent as a float would be signed as one figure and
+   * stored as another, and the signature would then fail against the contract
+   * for no visible reason.
+   */
+  stakeUsdso: string;
+  pnlUsdso: string;
   nonce: string;
   deadline: number;
 }
@@ -132,6 +142,9 @@ export async function attestRun(run: {
   gameTime: number;
   enemiesDestroyed: number;
   rocketsUsed: number;
+  /** Raw USDso, as strings. Zero for a run played without a position. */
+  stakeUsdso: string;
+  pnlUsdso: string;
 }): Promise<Attestation> {
   return request("/api/runs/attest", run);
 }

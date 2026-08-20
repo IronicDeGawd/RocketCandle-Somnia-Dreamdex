@@ -40,6 +40,12 @@ describe("Attestation service <-> contract", function () {
     await game.waitForDeployment();
   });
 
+  /** The struct submitScore takes: the signed run, without the player. */
+  function claimOf(run) {
+    const { player: _player, ...claim } = run;
+    return claim;
+  }
+
   /** Build and sign a run exactly the way the service does. */
   async function signWithService(overrides = {}) {
     const latest = await ethers.provider.getBlock("latest");
@@ -50,6 +56,10 @@ describe("Attestation service <-> contract", function () {
       gameTime: 120,
       enemiesDestroyed: 10,
       rocketsUsed: 8,
+      // The trade the run was played on, raw USDso. Signed like everything
+      // else, so the service and the contract must agree on it too.
+      stakeUsdso: "5000000000000000000",
+      pnlUsdso: "-120000000000000000",
       nonce: "42",
       deadline: latest.timestamp + 600,
       ...overrides,
@@ -71,16 +81,7 @@ describe("Attestation service <-> contract", function () {
     await expect(
       game
         .connect(player)
-        .submitScore(
-          run.score,
-          run.level,
-          run.gameTime,
-          run.enemiesDestroyed,
-          run.rocketsUsed,
-          run.nonce,
-          run.deadline,
-          signature
-        )
+        .submitScore(claimOf(run), signature)
     ).to.emit(game, "GameCompleted");
   });
 
@@ -107,6 +108,8 @@ describe("Attestation service <-> contract", function () {
       gameTime: 120,
       enemiesDestroyed: 10,
       rocketsUsed: 8,
+      stakeUsdso: "5000000000000000000",
+      pnlUsdso: "0",
       nonce: "7",
       deadline: latest.timestamp + 600,
     };
@@ -123,16 +126,7 @@ describe("Attestation service <-> contract", function () {
     await expect(
       game
         .connect(player)
-        .submitScore(
-          run.score,
-          run.level,
-          run.gameTime,
-          run.enemiesDestroyed,
-          run.rocketsUsed,
-          run.nonce,
-          run.deadline,
-          signature
-        )
+        .submitScore(claimOf(run), signature)
     ).to.be.revertedWith("Bad attestation");
   });
 

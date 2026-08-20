@@ -19,6 +19,9 @@ interface RawLeaderboardEntry {
 }
 
 interface RawPlayerHistoryEntry {
+  /** Raw USDso, 18 decimals, as the contract stores them. */
+  stakeUsdso?: bigint;
+  pnlUsdso?: bigint;
   score: bigint;
   level: bigint;
   gameTime: bigint;
@@ -110,8 +113,10 @@ export default function ScoresPage() {
   } = useReadContract({
     address: contractAddress as `0x${string}`,
     abi: GAME_CONTRACT_ABI,
-    functionName: "getWeeklyTopScores",
-    args: [BigInt(currentWeek), BigInt(10)], // Get top 10 scores
+    // Paged and unsorted now: sorting is work this page does for nothing once
+    // the call returns, and the contract was bubble-sorting in memory.
+    functionName: "getWeeklyScores",
+    args: [BigInt(currentWeek), BigInt(0), BigInt(50)],
     query: {
       enabled: !!contractAddress && currentWeek > 0,
     },
@@ -153,14 +158,18 @@ export default function ScoresPage() {
 
   const formatLeaderboardData = (data: unknown[]): LeaderboardEntry[] => {
     if (!data) return [];
-    return data.map((entry: unknown) => {
-      const typedEntry = entry as RawLeaderboardEntry;
-      return {
-        player: typedEntry.player,
-        score: Number(typedEntry.score),
-        timestamp: Number(typedEntry.timestamp),
-      };
-    });
+    return data
+      .map((entry: unknown) => {
+        const typedEntry = entry as RawLeaderboardEntry;
+        return {
+          player: typedEntry.player,
+          score: Number(typedEntry.score),
+          timestamp: Number(typedEntry.timestamp),
+        };
+      })
+      // Highest first. The contract returns the week in the order players
+      // first appeared, which is the cheap thing for it to do.
+      .sort((a, b) => b.score - a.score);
   };
 
   const formatPlayerHistory = (data: unknown[]) => {
@@ -175,12 +184,20 @@ export default function ScoresPage() {
         player: typedEntry.player,
         enemiesDestroyed: Number(typedEntry.enemiesDestroyed),
         rocketsUsed: Number(typedEntry.rocketsUsed),
+        // The trade the run was played on. Zero for a practice run, or one
+        // whose position was ejected before the end.
+        stakeUsdso: Number(typedEntry.stakeUsdso ?? 0n) / 1e18,
+        pnlUsdso: Number(typedEntry.pnlUsdso ?? 0n) / 1e18,
       };
     });
   };
 
-  const leaderboard = formatLeaderboardData(leaderboardData as unknown[]);
-  const playerHistory = formatPlayerHistory(playerHistoryData as unknown[]);
+  const leaderboard = formatLeaderboardData(
+    (leaderboardData ?? []) as unknown as unknown[]
+  );
+  const playerHistory = formatPlayerHistory(
+    (playerHistoryData ?? []) as unknown as unknown[]
+  );
 
   // The leaderboard query is deliberately held off until the current week is
   // known, so "still finding out which week we're on" reads as loading too -
@@ -351,6 +368,26 @@ export default function ScoresPage() {
                         {new Date(game.timestamp * 1000).toLocaleDateString(
                           "en-US",
                           { day: "2-digit", month: "short" }
+                        )}
+                        {/* The trade the run was played on, now that the run
+                            and the trade are one record rather than two
+                            datasets matched on a timestamp and a hope. */}
+                        {game.stakeUsdso > 0 ? (
+                          <span className="sc-row-trade">
+                            {game.stakeUsdso.toFixed(2)} USDso{" "}
+                            <span
+                              className={
+                                game.pnlUsdso < 0 ? "sc-loss" : "sc-gain"
+                              }
+                            >
+                              {game.pnlUsdso >= 0 ? "+" : ""}
+                              {game.pnlUsdso.toFixed(2)}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="sc-row-trade sc-row-trade--none">
+                            no position
+                          </span>
                         )}
                       </span>
                       <span className="sc-row-right rc-mono">

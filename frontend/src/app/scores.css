@@ -148,7 +148,19 @@
   background: var(--rc-well);
 }
 
-.sc-row-left { color: var(--rc-text-soft); }
+.sc-row-left {
+  color: var(--rc-text-soft);
+  /* The level and date on one line, the trade under it - a row is scanned down
+     a column, so the second fact belongs below the first rather than beside. */
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sc-row-trade { font-size: 12px; color: var(--rc-text-faint); }
+.sc-row-trade--none { font-style: italic; }
+.sc-gain { color: var(--rc-yellow); }
+.sc-loss { color: var(--rc-red); }
 .sc-row-right { color: var(--rc-white); }
 
 .sc-row--you {

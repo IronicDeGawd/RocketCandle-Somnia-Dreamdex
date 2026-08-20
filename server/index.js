@@ -178,6 +178,13 @@ app.post("/api/runs/attest", requireAuth, async (req, res) => {
     gameTime: Number(req.body?.gameTime),
     enemiesDestroyed: Number(req.body?.enemiesDestroyed),
     rocketsUsed: Number(req.body?.rocketsUsed),
+    /*
+     * Strings, not numbers. These are 128-bit raw USDso and JSON numbers lose
+     * precision well before that - a stake sent as a float would be signed as
+     * one figure and stored as another.
+     */
+    stakeUsdso: String(req.body?.stakeUsdso ?? "0"),
+    pnlUsdso: String(req.body?.pnlUsdso ?? "0"),
   };
 
   const reason = rejectionReason(run);
@@ -203,6 +210,8 @@ app.post("/api/runs/attest", requireAuth, async (req, res) => {
     gameTime: run.gameTime,
     enemiesDestroyed: run.enemiesDestroyed,
     rocketsUsed: run.rocketsUsed,
+    stakeUsdso: run.stakeUsdso,
+    pnlUsdso: run.pnlUsdso,
     nonce,
     deadline,
   };

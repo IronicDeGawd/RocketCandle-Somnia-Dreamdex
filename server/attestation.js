@@ -27,6 +27,10 @@ export const RUN_TYPES = {
     { name: "gameTime", type: "uint256" },
     { name: "enemiesDestroyed", type: "uint16" },
     { name: "rocketsUsed", type: "uint16" },
+    // The trade that paid for the run. Signed, because a P&L the player simply
+    // asserts is a P&L they can choose.
+    { name: "stakeUsdso", type: "uint128" },
+    { name: "pnlUsdso", type: "int128" },
     { name: "nonce", type: "uint256" },
     { name: "deadline", type: "uint256" },
   ],
@@ -43,6 +47,10 @@ export const RUN_LIMITS = {
   maxLevel: 7,
   minGameTimeSeconds: 5,
   maxGameTimeSeconds: 60 * 60,
+  /** uint128, the width the contract stores a stake in. */
+  maxStakeRaw: (1n << 128n) - 1n,
+  /** int128's positive half, for the same reason. */
+  maxPnlRaw: (1n << 127n) - 1n,
   maxScorePerSecond: 2000,
   maxScore: 1_000_000,
   maxRocketsPerLevel: 3,
@@ -61,6 +69,38 @@ export function rejectionReason(run) {
 
   if (![score, level, gameTime, enemiesDestroyed, rocketsUsed].every(whole)) {
     return "run values must be whole numbers";
+  }
+
+  /*
+   * The trade, in raw USDso.
+   *
+   * Both are strings from the client because they are 128-bit and JSON numbers
+   * are not. Range-checked rather than truncated: a stake that does not fit is
+   * refused, because silently wrapping it would store a number nobody reported.
+   */
+  let stake;
+  let pnl;
+  try {
+    stake = BigInt(run.stakeUsdso ?? 0);
+    pnl = BigInt(run.pnlUsdso ?? 0);
+  } catch {
+    return "the trade figures are not whole numbers";
+  }
+
+  if (stake < 0n) return "a stake cannot be negative";
+  if (stake > RUN_LIMITS.maxStakeRaw) return "stake out of range";
+  if (pnl > RUN_LIMITS.maxPnlRaw || pnl < -RUN_LIMITS.maxPnlRaw) {
+    return "profit or loss out of range";
+  }
+
+  /*
+   * A loss cannot exceed the stake: selling a holding returns something, even
+   * if it is little. A profit far above the stake is not impossible in theory
+   * but is not reachable in a run of this length, so the ceiling is the stake
+   * itself - generous, and still a ceiling.
+   */
+  if (stake > 0n && (pnl > stake || -pnl > stake)) {
+    return "profit or loss larger than the stake";
   }
   if (score <= 0 || score > RUN_LIMITS.maxScore) return "score out of range";
   if (level <= 0 || level > RUN_LIMITS.maxLevel) return "level out of range";

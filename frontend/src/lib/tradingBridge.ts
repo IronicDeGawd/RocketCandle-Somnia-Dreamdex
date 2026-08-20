@@ -81,6 +81,15 @@ export interface TradingBridge {
   /** Base tokens sitting in the vault - a buy that this page has forgotten. */
   vaultBase: () => Promise<number>;
   /**
+   * What the last closed position staked and made, or null before one has.
+   *
+   * Kept because the score is submitted after the run has ended and the
+   * position has already been sold - so by then the live snapshot is empty, and
+   * the numbers that belong in the run's record are gone unless something held
+   * on to them.
+   */
+  lastRun: () => { stakeUsdso: number; pnlUsdso: number } | null;
+  /**
    * Adopt a holding the vault already has.
    *
    * The position only ever lived in this closure, so a refresh forgot it while
@@ -223,6 +232,7 @@ export function buildTradingBridge({
     });
   };
   let stop: ArmedStop | null = null;
+  let lastRun: { stakeUsdso: number; pnlUsdso: number } | null = null;
 
   const canRestStop = Boolean(market.stopRegistry && ownerWallet);
 
@@ -278,6 +288,10 @@ export function buildTradingBridge({
 
     async vaultBase() {
       return readVaultBalance(clients, market, owner, market.base, "base");
+    },
+
+    lastRun() {
+      return lastRun;
     },
 
     async recover() {
@@ -380,6 +394,13 @@ export function buildTradingBridge({
       const result = await closePosition(clients, market, owner, position);
       orderCount += 1;
       addVolume(result.proceedsUsdso, result.txHash);
+
+      // Held for the score submission, which happens after this point and
+      // therefore after the position it is describing has gone.
+      lastRun = {
+        stakeUsdso: position.costUsdso,
+        pnlUsdso: result.pnlUsdso,
+      };
       position = null;
 
       publish(emptySnapshot(orderCount, volumeUsdso));

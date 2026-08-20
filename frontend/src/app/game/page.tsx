@@ -1,5 +1,6 @@
 "use client";
 
+import { parseUnits } from "viem";
 import { useApp } from "../providers";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -46,6 +47,18 @@ const PhaserGame = dynamic(() => import("@/components/PhaserGame"), {
     </div>
   ),
 });
+
+/**
+ * A USDso amount as the contract stores it: raw, 18 decimals, as a string.
+ *
+ * Fixed to 18 places before parsing because a float's own representation can
+ * carry digits beyond that, and parseUnits refuses a fraction it cannot fit
+ * rather than rounding it away.
+ */
+function toRawUsdso(value: number): string {
+  if (!Number.isFinite(value)) return "0";
+  return parseUnits(value.toFixed(18), 18).toString();
+}
 
 export default function GamePage() {
   const {
@@ -316,12 +329,26 @@ export default function GamePage() {
         );
       }
 
+      /*
+       * The trade this run was played on.
+       *
+       * Read from the bridge rather than recomputed: it kept the figures when
+       * it sold the position, which happened before this point. A practice run
+       * or a run whose position was ejected early reports zero, which is the
+       * truth rather than a gap.
+       */
+      const played = window.rocketCandleGame?.trading?.lastRun?.() ?? null;
+      const stakeUsdso = toRawUsdso(played?.stakeUsdso ?? 0);
+      const pnlUsdso = toRawUsdso(played?.pnlUsdso ?? 0);
+
       const attestation = await attestRun({
         score,
         level: adjustedLevel,
         gameTime,
         enemiesDestroyed,
         rocketsUsed,
+        stakeUsdso,
+        pnlUsdso,
       });
 
       notifyInfo("Wallet Confirmation", "Confirming transaction in wallet...");
@@ -330,14 +357,21 @@ export default function GamePage() {
         address: contractAddress as `0x${string}`,
         abi: GAME_CONTRACT_ABI,
         functionName: "submitScore",
+        // One struct, in the order the contract's typehash declares. Ten
+        // positional arguments pushed submitScore past what the compiler could
+        // hold on the stack.
         args: [
-          BigInt(attestation.run.score),
-          BigInt(attestation.run.level),
-          BigInt(attestation.run.gameTime),
-          attestation.run.enemiesDestroyed,
-          attestation.run.rocketsUsed,
-          BigInt(attestation.run.nonce),
-          BigInt(attestation.run.deadline),
+          {
+            score: BigInt(attestation.run.score),
+            level: BigInt(attestation.run.level),
+            gameTime: BigInt(attestation.run.gameTime),
+            enemiesDestroyed: attestation.run.enemiesDestroyed,
+            rocketsUsed: attestation.run.rocketsUsed,
+            stakeUsdso: BigInt(attestation.run.stakeUsdso),
+            pnlUsdso: BigInt(attestation.run.pnlUsdso),
+            nonce: BigInt(attestation.run.nonce),
+            deadline: BigInt(attestation.run.deadline),
+          },
           attestation.signature,
         ],
       });
