@@ -207,13 +207,29 @@ export const useNotifications = () => {
     );
   }, [notifySuccess]);
 
-  const notifyScoreSubmitted = useCallback((score: number, tokens: number) => {
+  // tokens is null when the confirmed transaction's receipt could not be
+  // read for a minted amount - the run itself still succeeded on-chain, so
+  // this must never be confused with a genuine zero reward.
+  const notifyScoreSubmitted = useCallback((score: number, tokens: number | null) => {
     return notifySuccess(
       'Score Submitted!',
-      `Score: ${score.toLocaleString()} | Earned: ${tokens.toFixed(2)} WICK`,
+      tokens === null
+        ? `Score: ${score.toLocaleString()} | Transaction confirmed, but the earned amount could not be read`
+        : `Score: ${score.toLocaleString()} | Earned: ${tokens.toFixed(2)} WICK`,
       6000
     );
   }, [notifySuccess]);
+
+  // Shown before the transaction settles, from the client's own copy of the
+  // reward formula - explicitly labelled as unconfirmed so it never reads as
+  // the same fact notifyScoreSubmitted reports once the chain has minted.
+  const notifyScoreProjected = useCallback((score: number, tokens: number) => {
+    return notifyInfo(
+      'Submitting Run',
+      `Score: ${score.toLocaleString()} | Est. Reward: ${tokens.toFixed(2)} WICK (unconfirmed)`,
+      6000
+    );
+  }, [notifyInfo]);
 
   const notifyGameError = useCallback((error: string) => {
     return notifyError('Game Error', error, 6000);
@@ -234,6 +250,7 @@ export const useNotifications = () => {
     notifyTransactionSubmitted,
     notifyTransactionConfirmed,
     notifyScoreSubmitted,
+    notifyScoreProjected,
     notifyGameError,
   };
 };

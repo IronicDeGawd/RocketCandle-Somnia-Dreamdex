@@ -1,3 +1,4 @@
+import { encodeEventTopics, parseEventLogs, type Log } from "viem";
 
 // Contract ABI for RocketCandleGame
 /*
@@ -1777,7 +1778,68 @@ export function parseTokenAmount(amount: number, decimals: number = 18): bigint 
   return BigInt(Math.floor(amount * Math.pow(10, decimals)));
 }
 
-// Calculate expected token reward for a score
+/**
+ * What submitScore() actually minted, read out of the TokensEarned event a
+ * confirmed transaction's receipt carries - never recomputed client-side.
+ *
+ * The contract only emits this event when it both owed a reward and had the
+ * treasury balance to pay it (see RocketCandleGame.sol's submitScore). A run
+ * that fell through that guard leaves no log behind, which is the truth -
+ * zero was minted - not a gap in what got measured.
+ *
+ * Returns `null` - never 0 - when the receipt cannot be trusted: a log whose
+ * topic matches TokensEarned but whose body failed to decode (truncated/
+ * malformed data), or any other decode failure. viem's parseEventLogs does
+ * not throw for that case by default (strict mode silently drops the log,
+ * confirmed empirically in tests/minted-reward.test.ts) - it just goes
+ * missing from the decoded list, which would otherwise look identical to
+ * "the contract genuinely never emitted the event". The topic0 pre-check
+ * below is what tells those two cases apart. A thrown error from viem is
+ * still caught as a second line of defence.
+ */
+export function getMintedReward(logs: Log[]): number | null {
+  try {
+    // topic0 alone, no args - this is just the event's signature hash, used
+    // to spot "something claiming to be TokensEarned showed up" independent
+    // of whether it went on to decode.
+    const [topic0] = encodeEventTopics({
+      abi: GAME_CONTRACT_ABI,
+      eventName: "TokensEarned",
+    });
+    const candidateLogs = logs.filter((log) => log.topics[0] === topic0);
+
+    const decoded = parseEventLogs({
+      abi: GAME_CONTRACT_ABI,
+      eventName: "TokensEarned",
+      logs,
+    });
+
+    if (candidateLogs.length > decoded.length) {
+      console.error(
+        "getMintedReward: a TokensEarned-tagged log failed to decode",
+        { candidateCount: candidateLogs.length, decodedCount: decoded.length }
+      );
+      return null;
+    }
+
+    if (decoded.length === 0) return 0;
+
+    const amount = (decoded[0].args as { amount?: bigint }).amount;
+    if (typeof amount !== "bigint") {
+      console.error("getMintedReward: TokensEarned log decoded without an amount", decoded[0]);
+      return null;
+    }
+    return formatTokenAmount(amount);
+  } catch (error) {
+    console.error("getMintedReward: failed to read receipt logs", error);
+    return null;
+  }
+}
+
+// Calculate expected token reward for a score. A projection only - the
+// contract's own math (calculateTokenReward in RocketCandleGame.sol) is what
+// actually decides a mint. Never present this number as a settled fact; see
+// getMintedReward for what was really minted.
 export function calculateExpectedReward(score: number, level: number): number {
   const TOKENS_PER_1000_SCORE = 1; // 1 WICK per 1000 score
   const TOKENS_PER_LEVEL = 1.5; // 1.5 WICK per level

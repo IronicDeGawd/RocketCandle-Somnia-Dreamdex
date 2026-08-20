@@ -19,6 +19,7 @@ import {
   getGameContractAddress,
   validateScore,
   calculateExpectedReward,
+  getMintedReward,
 } from "@/lib/blockchain";
 import {
   attestRun,
@@ -79,6 +80,7 @@ export default function GamePage() {
     notifyTransactionSubmitted,
     notifyTransactionConfirmed,
     notifyScoreSubmitted,
+    notifyScoreProjected,
     notifyNetworkError,
   } = useNotifications();
 
@@ -115,7 +117,6 @@ export default function GamePage() {
   const [lastGameResult, setLastGameResult] = useState<{
     score: number;
     level: number;
-    tokensEarned: number;
   } | null>(null);
   // Remove old blockchainStatus state - using notifications instead
 
@@ -178,6 +179,7 @@ export default function GamePage() {
   const {
     isLoading: isConfirming,
     isSuccess,
+    data: receipt,
     error: receiptError,
   } = useWaitForTransactionReceipt({
     hash,
@@ -361,6 +363,10 @@ export default function GamePage() {
       });
 
       notifyInfo("Wallet Confirmation", "Confirming transaction in wallet...");
+      // A projection from the client's own copy of the reward formula, shown
+      // before the chain has minted anything - explicitly unconfirmed. The
+      // real figure replaces it once the transaction settles.
+      notifyScoreProjected(score, expectedTokens);
 
       const writeResult = writeContract({
         address: contractAddress as `0x${string}`,
@@ -391,7 +397,6 @@ export default function GamePage() {
       setLastGameResult({
         score,
         level: adjustedLevel,
-        tokensEarned: expectedTokens,
       });
 
       notifyInfo(
@@ -440,11 +445,19 @@ export default function GamePage() {
       if (hash) {
         notifyTransactionConfirmed(hash);
       }
-      notifyScoreSubmitted(lastGameResult.score, lastGameResult.tokensEarned);
+      // What the contract actually minted, read off the receipt's TokensEarned
+      // log - not the client's earlier projection. No log means the contract's
+      // own reward guard paid out nothing, which is a real zero, not a gap.
+      // The chain has already succeeded by this point, so a failure to read
+      // the amount (mintedTokens === null) must never swallow the
+      // confirmation or skip the stats refresh below.
+      const mintedTokens = receipt ? getMintedReward(receipt.logs) : null;
+      notifyScoreSubmitted(lastGameResult.score, mintedTokens);
       refreshPlayerStats();
     }
   }, [
     isSuccess,
+    receipt,
     refreshPlayerStats,
     hash,
     lastGameResult,
