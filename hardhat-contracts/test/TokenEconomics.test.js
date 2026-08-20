@@ -204,11 +204,114 @@ describe("Token economics", function () {
     // A later contribution belongs to the later week, so it cannot dilute or
     // inflate a week already finished.
     await game.connect(owner).fundWeeklyPot(ethers.parseEther("500"));
-    expect(await game.weeklyPot(weekOne)).to.equal(ethers.parseEther("100"));
+    expect((await game.weekPot(weekOne)).funded).to.equal(ethers.parseEther("100"));
 
     await time.increase(WEEK);
     await game.connect(alice).claimWeeklyShare(weekOne);
     expect(await stake.balanceOf(alice.address)).to.equal(ethers.parseEther("100"));
+  });
+
+  describe("Rollover", function () {
+    const GRACE_WEEKS = 4;
+
+    it("Should refuse to roll a week before the grace period", async function () {
+      await game.connect(owner).fundWeeklyPot(ethers.parseEther("100"));
+      const week = await game.getCurrentWeek();
+      await time.increase(WEEK);
+
+      await expect(
+        game.connect(bob).rollOverWeek(week)
+      ).to.be.revertedWith("Not aged out yet");
+
+      // Even right up against the edge - one week short of the grace period.
+      await time.increase(WEEK * (GRACE_WEEKS - 2));
+      await expect(
+        game.connect(bob).rollOverWeek(week)
+      ).to.be.revertedWith("Not aged out yet");
+    });
+
+    it("Should move an unclaimed week's remainder into the current week once aged out", async function () {
+      await playRun(alice, 200000, 5);
+      const staleWeek = await game.getCurrentWeek();
+      await game.connect(owner).fundWeeklyPot(ethers.parseEther("100"));
+
+      await time.increase(WEEK * GRACE_WEEKS);
+      const currentWeek = await game.getCurrentWeek();
+      expect(currentWeek).to.be.gte(staleWeek + BigInt(GRACE_WEEKS));
+
+      // Anybody can trigger it - here it's a player with no stake in that week.
+      await expect(game.connect(bob).rollOverWeek(staleWeek))
+        .to.emit(game, "WeekRolledOver")
+        .withArgs(staleWeek, currentWeek, ethers.parseEther("100"));
+
+      expect((await game.weekPot(currentWeek)).funded).to.equal(
+        ethers.parseEther("100")
+      );
+      expect((await game.weekPot(staleWeek)).funded).to.equal(
+        (await game.weekPot(staleWeek)).paid
+      );
+    });
+
+    it("Should refuse to roll the same week twice", async function () {
+      await game.connect(owner).fundWeeklyPot(ethers.parseEther("100"));
+      const staleWeek = await game.getCurrentWeek();
+      await time.increase(WEEK * GRACE_WEEKS);
+
+      await game.connect(bob).rollOverWeek(staleWeek);
+      await expect(
+        game.connect(bob).rollOverWeek(staleWeek)
+      ).to.be.revertedWith("Nothing to roll");
+    });
+
+    it("Should roll only the unclaimed remainder of a partially claimed week", async function () {
+      await playRun(alice, 200000, 5);
+      await playRun(bob, 200000, 5);
+      const staleWeek = await game.getCurrentWeek();
+      await game.connect(owner).fundWeeklyPot(ethers.parseEther("100"));
+      await time.increase(WEEK);
+
+      await game.connect(alice).claimWeeklyShare(staleWeek);
+      const aliceGot = await stake.balanceOf(alice.address);
+
+      await time.increase(WEEK * (GRACE_WEEKS - 1));
+      const currentWeek = await game.getCurrentWeek();
+
+      await game.connect(bob).rollOverWeek(staleWeek);
+
+      const expectedRemainder = ethers.parseEther("100") - aliceGot;
+      expect((await game.weekPot(currentWeek)).funded).to.equal(expectedRemainder);
+    });
+
+    it("Should have nothing left to roll from a fully claimed week", async function () {
+      await playRun(alice, 200000, 5);
+      const staleWeek = await game.getCurrentWeek();
+      await game.connect(owner).fundWeeklyPot(ethers.parseEther("100"));
+      await time.increase(WEEK);
+
+      await game.connect(alice).claimWeeklyShare(staleWeek);
+      await time.increase(WEEK * (GRACE_WEEKS - 1));
+
+      await expect(
+        game.connect(bob).rollOverWeek(staleWeek)
+      ).to.be.revertedWith("Nothing to roll");
+    });
+
+    it("Should never let a claim exceed the pot after a rollover boosted it", async function () {
+      await playRun(alice, 200000, 5);
+      const staleWeek = await game.getCurrentWeek();
+      await game.connect(owner).fundWeeklyPot(ethers.parseEther("100"));
+      await time.increase(WEEK * GRACE_WEEKS);
+
+      await game.connect(bob).rollOverWeek(staleWeek);
+      const currentWeek = await game.getCurrentWeek();
+
+      await playRun(alice, 200000, 5);
+      await time.increase(WEEK);
+
+      await game.connect(alice).claimWeeklyShare(currentWeek);
+      const paid = await stake.balanceOf(alice.address);
+      expect(paid).to.be.lte((await game.weekPot(currentWeek)).funded);
+    });
   });
 
   describe("Sinks", function () {

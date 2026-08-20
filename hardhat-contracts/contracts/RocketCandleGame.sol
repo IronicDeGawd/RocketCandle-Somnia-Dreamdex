@@ -133,6 +133,10 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
 
     /// @dev Smallest balance that can claim a share of a week's pot.
     uint256 public constant CLAIM_THRESHOLD = 100 * 10 ** 18;
+    /// @dev Declared ceiling, not an enforced one: supply is fixed at the
+    /// constructor's 9,000,000 mint, there is no other mint path, and the
+    /// total can only ever fall as players burn tokens on revives, firepower
+    /// and market passes.
     uint256 public constant MAX_TOTAL_SUPPLY = 10000000 * 10 ** 18; // 10 million WICK max
     uint256 public constant TREASURY_RESERVE = 9000000 * 10 ** 18; // 9 million for rewards
 
@@ -180,8 +184,6 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
 
         // Mint treasury to contract
         _mint(address(this), TREASURY_RESERVE);
-        // Mint initial supply to deployer
-        _mint(msg.sender, 1000000 * 10 ** 18);
     }
 
     /**
@@ -291,20 +293,38 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
     /// @dev What the pot is paid in - USDso, the currency runs are staked in.
     IERC20 public stakeToken;
 
-    mapping(uint256 => uint256) public weeklyPot;
+    /// @dev Packed so a claimer's read of `funded` and write of `paid` share
+    /// one storage slot. On Somnia a cold slot costs 1,000,000 gas; a second
+    /// mapping keyed by week would put every claimer's write on a slot last
+    /// touched by a different player, i.e. cold every time. Packed, the slot
+    /// is already warm from the read a claim needs anyway, so tallying the
+    /// payout costs almost nothing extra.
+    struct WeekPot {
+        uint128 funded;
+        uint128 paid;
+    }
+
+    mapping(uint256 => WeekPot) public weekPot;
     mapping(uint256 => uint256) public weeklyPointsTotal;
     mapping(uint256 => mapping(address => uint256)) public weeklyPointsEarned;
     mapping(uint256 => mapping(address => bool)) public weeklyClaimed;
 
+    /// @dev A week has to be this many weeks in the past before its leftover
+    /// can be rolled forward. Long enough that a slow claimer is not punished
+    /// for taking their time, short enough that money does not sit idle.
+    uint256 public constant ROLLOVER_GRACE_WEEKS = 4;
+
     event WeeklyPotFunded(uint256 indexed week, address indexed from, uint256 amount);
     event WeeklyShareClaimed(uint256 indexed week, address indexed player, uint256 amount);
+    event WeekRolledOver(uint256 indexed fromWeek, uint256 indexed toWeek, uint256 amount);
 
     /**
      * @dev Add to the current week's pot.
      *
-     * Open to anyone: entry stakes will feed it, and the treasury can top it up
-     * to get a demo going. Funds land in whichever week is running when they
-     * arrive, so a late contribution cannot dilute a week already being claimed.
+     * Open to anyone: entry stakes will feed it, and the treasury can top it
+     * up to get a demo going. Funds land in whichever week is running when
+     * they arrive, so a late contribution cannot dilute a week already being
+     * claimed.
      */
     function fundWeeklyPot(uint256 _amount) external nonReentrant {
         require(_amount > 0, "Nothing to add");
@@ -316,7 +336,10 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
         stakeToken.safeTransferFrom(msg.sender, address(this), _amount);
         uint256 received = stakeToken.balanceOf(address(this)) - before;
 
-        weeklyPot[week] += received;
+        WeekPot storage pot = weekPot[week];
+        uint256 newFunded = uint256(pot.funded) + received;
+        require(newFunded <= type(uint128).max, "Pot too large");
+        pot.funded = uint128(newFunded);
         emit WeeklyPotFunded(week, msg.sender, received);
     }
 
@@ -337,16 +360,51 @@ contract RocketCandleGame is ERC20, Ownable, ReentrancyGuard, EIP712 {
         require(earned > 0, "Nothing earned that week");
 
         uint256 total = weeklyPointsTotal[_week];
-        uint256 pot = weeklyPot[_week];
+        WeekPot storage weekTotals = weekPot[_week];
+        uint256 pot = weekTotals.funded;
         require(total > 0 && pot > 0, "Nothing to share");
 
         weeklyClaimed[_week][msg.sender] = true;
 
         uint256 share = (pot * earned) / total;
         require(share > 0, "Share rounds to nothing");
+        require(uint256(weekTotals.paid) < pot, "Week rolled over");
+        require(uint256(weekTotals.paid) + share <= pot, "Exceeds pot");
+
+        weekTotals.paid += uint128(share);
 
         stakeToken.safeTransfer(msg.sender, share);
         emit WeeklyShareClaimed(_week, msg.sender, share);
+    }
+
+    /**
+     * @dev Push a finished week's unclaimed remainder into the current week's
+     * pot. Anybody may call this — there is no owner privilege here, and none
+     * should ever be added, because the one promise this contract makes is
+     * that USDso only ever leaves it through a player's own claim. This moves
+     * money between weeks inside the contract; nothing is transferred out.
+     *
+     * A week only qualifies once it is old enough that nobody claiming it is
+     * still plausible. Rolling credits the remainder to `paid` on the source
+     * week too, so the same week can never be rolled a second time - there is
+     * nothing left in it to find.
+     */
+    function rollOverWeek(uint256 _week) external {
+        uint256 currentWeek = getCurrentWeek();
+        require(_week + ROLLOVER_GRACE_WEEKS <= currentWeek, "Not aged out yet");
+
+        WeekPot storage source = weekPot[_week];
+        uint256 remainder = uint256(source.funded) - uint256(source.paid);
+        require(remainder > 0, "Nothing to roll");
+
+        source.paid += uint128(remainder);
+
+        WeekPot storage destination = weekPot[currentWeek];
+        uint256 newFunded = uint256(destination.funded) + remainder;
+        require(newFunded <= type(uint128).max, "Pot too large");
+        destination.funded = uint128(newFunded);
+
+        emit WeekRolledOver(_week, currentWeek, remainder);
     }
 
     // --- Sinks ------------------------------------------------------------

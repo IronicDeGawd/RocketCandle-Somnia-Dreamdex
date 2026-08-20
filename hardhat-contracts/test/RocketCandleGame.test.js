@@ -102,13 +102,10 @@ describe("RocketCandleGame", function () {
       expect(await rocketCandleGame.owner()).to.equal(owner.address);
     });
 
-    it("Should mint initial supply correctly", async function () {
-      const expectedOwnerBalance = ethers.parseEther("1000000");
+    it("Should mint the treasury reserve only, no deployer premint", async function () {
       const expectedTreasuryBalance = ethers.parseEther("9000000");
 
-      expect(await rocketCandleGame.balanceOf(owner.address)).to.equal(
-        expectedOwnerBalance
-      );
+      expect(await rocketCandleGame.balanceOf(owner.address)).to.equal(0);
       expect(
         await rocketCandleGame.balanceOf(await rocketCandleGame.getAddress())
       ).to.equal(expectedTreasuryBalance);
@@ -265,10 +262,13 @@ describe("RocketCandleGame", function () {
 
   describe("Token Economics", function () {
     it("Should allow revive purchase", async function () {
-      // First, player needs tokens
+      // First, player needs tokens - earned by playing a run, since there is
+      // no premint to hand out anymore.
       await rocketCandleGame
-        .connect(owner)
-        .transfer(player1.address, ethers.parseEther("100"));
+        .connect(player1)
+        .submitScore(
+          ...(await attest(player1, 200000, 5, 120, 10, 8))
+        );
 
       const initialBalance = await rocketCandleGame.balanceOf(player1.address);
 
