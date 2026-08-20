@@ -486,11 +486,11 @@ export class MenuScene extends Phaser.Scene {
       const blocked = this.unavailableReason(market.id);
 
       /*
-       * A market this vault cannot reach is shown as unreachable.
+       * A market the wallet cannot afford is shown as unreachable.
        *
        * Each spot market sets its smallest trade in the token being bought, so
        * the money needed to reach it depends on that token's price - Bitcoin's
-       * minimum can be worth more than a whole vault while Somnia's is small
+       * minimum can be worth more than a whole wallet while Somnia's is small
        * change. Left as normal, the player picks it, presses through, and the
        * exchange refuses the order with nothing having warned them.
        */
@@ -545,30 +545,15 @@ export class MenuScene extends Phaser.Scene {
     const min = game?.marketMinimums?.[marketId];
     if (!min) return null;
 
-    /*
-     * Against THIS market's vault, not "the" vault.
-     *
-     * Every market keeps its own - a balance read is a call on the pool - so
-     * money deposited for one pair cannot buy another. Comparing one balance
-     * against every market's minimum showed a market with an empty pool as
-     * affordable, and the buy then failed for funds it was never going to find.
-     */
-    const held = game?.marketVaults?.[marketId];
+    // Undefined means "not read yet", not zero - treating it as zero would
+    // grey out every card on first paint and on any RPC hiccup, refusing a
+    // player who can perfectly well afford the market.
+    const held = game?.walletUsdso;
     if (typeof held !== "number") return null;
 
     if (held >= min.safeUsdso) return null;
-    /*
-     * "this market's own vault", not "this pool".
-     *
-     * A player reading the old wording saw the rail promise 7.00 USDso while a
-     * greyed card said 0.00, and had no way to know those are different
-     * pockets - it read as a bug. Saying whose vault it is teaches the rule at
-     * the one moment it matters, without a footnote nobody reads.
-     */
-    return (
-      `needs ${min.safeUsdso.toFixed(2)} USDso · ` +
-      `this market's own vault has ${held.toFixed(2)}`
-    );
+
+    return `needs ${min.safeUsdso.toFixed(2)} USDso · your wallet has ${held.toFixed(2)}`;
   }
 
   /** Say why the picker refused, without moving anything on screen. */

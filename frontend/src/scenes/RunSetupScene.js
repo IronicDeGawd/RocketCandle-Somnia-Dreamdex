@@ -2,6 +2,7 @@ import {
   DEFAULT_MARKET_ID,
   GAME_MARKETS,
 } from "@/data/DreamdexMarketFeed.js";
+import { deriveOpeningStake, EXPOSURE_STEP } from "@/lib/commitment";
 
 /**
  * The second screen: how much, and when to get out.
@@ -36,8 +37,8 @@ const SHADOW_OFFSET = 5;
  */
 const FALLBACK_MIN_STAKE = 0.5;
 
-/** What the stake steps by when the player nudges it. */
-const STAKE_STEP = 0.5;
+/** What the commitment steps by when the player nudges it. */
+const COMMITMENT_STEP = 0.5;
 
 /*
  * What the two exits may be set to. Zero means off - a player who wants to
@@ -66,11 +67,12 @@ export class RunSetupScene extends Phaser.Scene {
     this.buyingIn = false;
 
     /*
-     * Null until the chain answers. Not zero: treating an unread balance as
+     * Null until the wallet answers. Not zero: treating an unread balance as
      * empty would refuse a funded player for as long as the read took.
      */
-    this.vault = null;
-    this.stake = null;
+    this.walletBalance = null;
+    this.commitment = null;
+    this.openingStake = 0;
 
     this.exitPlan = {
       floorPct: this.registry.get("floorPct") ?? FLOOR_CHOICES[1],
@@ -83,7 +85,7 @@ export class RunSetupScene extends Phaser.Scene {
     this.buildActions();
     this.setUpKeys();
 
-    this.readVault();
+    this.readWalletBalance();
     this.publishPlan();
   }
 
@@ -113,32 +115,43 @@ export class RunSetupScene extends Phaser.Scene {
       .setOrigin(0.5);
   }
 
-  /** A framed row: the stake, with nudges either side of it. */
+  /** A framed row: the commitment, with nudges either side of it. */
   buildStakeRow() {
     const y = 216;
-    this.panel(600, y, 660, 96);
+    this.panel(600, y, 660, 112);
 
     this.add
-      .text(600, y - 32, "YOUR STAKE", {
+      .text(600, y - 40, "COMMIT TO THIS RUN", {
         fontFamily: PIXEL_FONT,
         fontSize: "9px",
         color: "rgba(255,255,255,0.55)",
       })
       .setOrigin(0.5);
 
-    this.stakeText = this.add
-      .text(600, y + 2, "reading the vault...", {
+    this.commitmentText = this.add
+      .text(600, y - 6, "reading your wallet...", {
         fontFamily: MONO_FONT,
         fontSize: "24px",
         color: "#FFFFFF",
       })
       .setOrigin(0.5);
 
-    this.nudge(600 - 250, y, "-", () => this.stepStake(-STAKE_STEP));
-    this.nudge(600 + 250, y, "+", () => this.stepStake(STAKE_STEP));
+    this.nudge(600 - 250, y - 8, "-", () => this.stepCommitment(-COMMITMENT_STEP));
+    this.nudge(600 + 250, y - 8, "+", () => this.stepCommitment(COMMITMENT_STEP));
 
-    this.vaultNote = this.add
-      .text(600, y + 34, "", {
+    // Read-only: the opening stake is derived, never edited directly. Showing
+    // it is what tells a player the rest of their commitment is headroom for
+    // `F` rather than money that went missing.
+    this.openingStakeText = this.add
+      .text(600, y + 26, "", {
+        fontFamily: MONO_FONT,
+        fontSize: "13px",
+        color: "rgba(255,255,255,0.55)",
+      })
+      .setOrigin(0.5);
+
+    this.walletNote = this.add
+      .text(600, y + 46, "", {
         fontFamily: MONO_FONT,
         fontSize: "13px",
         color: "rgba(255,255,255,0.55)",
@@ -232,88 +245,105 @@ export class RunSetupScene extends Phaser.Scene {
     this.input.keyboard.on("keydown-ENTER", () => this.startRun());
     this.input.keyboard.on("keydown-SPACE", () => this.startRun());
     this.input.keyboard.on("keydown-ESC", () => this.goBack());
-    this.input.keyboard.on("keydown-LEFT", () => this.stepStake(-STAKE_STEP));
-    this.input.keyboard.on("keydown-RIGHT", () => this.stepStake(STAKE_STEP));
+    this.input.keyboard.on("keydown-LEFT", () =>
+      this.stepCommitment(-COMMITMENT_STEP)
+    );
+    this.input.keyboard.on("keydown-RIGHT", () =>
+      this.stepCommitment(COMMITMENT_STEP)
+    );
   }
 
   // --- money ---------------------------------------------------------------
 
   /**
-   * What is actually available to stake.
+   * What is actually available to commit.
    *
    * Practice has no bridge at all, and that is not an error - it is the taster,
-   * and it plays without buying anything.
+   * and it plays without buying anything. Otherwise the pool between runs is
+   * empty by design (§4 of the transit plan sweeps it home at the end of
+   * every run), so the number this screen reads and clamps against is the
+   * wallet's own balance, not the pool's.
    */
-  async readVault() {
-    const trading = window.rocketCandleGame?.trading;
+  readWalletBalance() {
+    const held = window.rocketCandleGame?.walletUsdso;
 
-    if (!trading) {
-      this.vault = 0;
-      this.stake = 0;
-      this.refreshStake();
+    if (typeof held !== "number") {
+      // Undefined, not zero - the wallet just has not been read yet, and
+      // treating that as "you have nothing" would refuse a funded player for
+      // as long as the read takes.
+      this.walletBalance = null;
+      this.refreshCommitment();
       return;
     }
 
-    try {
-      const held = await trading.vaultUsdso();
-      this.vault = held ?? 0;
-      // Default to everything in there, which is what PLAY used to do without
-      // asking. The difference is that it can now be turned down.
-      this.stake = this.vault;
-    } catch {
-      this.vault = 0;
-      this.stake = 0;
-    }
-
-    this.refreshStake();
+    this.walletBalance = held;
+    // Default to everything in there, which is what PLAY used to do without
+    // asking. The difference is that it can now be turned down.
+    this.commitment = held;
+    this.refreshCommitment();
   }
 
-  /** The smallest stake this market will actually accept. */
+  /** The smallest opening stake this market will actually accept. */
   minStake() {
     const min = window.rocketCandleGame?.marketMinimums?.[this.marketId];
     return min ? min.safeUsdso : FALLBACK_MIN_STAKE;
   }
 
-  stepStake(delta) {
-    if (this.vault === null || this.buyingIn) return;
+  stepCommitment(delta) {
+    if (this.walletBalance === null || this.buyingIn) return;
 
-    const next = Math.round((this.stake + delta) * 100) / 100;
-    // Never more than is there. Below the market's minimum is allowed to be
-    // shown - in red, with the figure - rather than silently clamped, so the
-    // player can see what the market wants of them.
-    this.stake = Math.max(0, Math.min(this.vault, next));
-    this.refreshStake();
+    const next = Math.round((this.commitment + delta) * 100) / 100;
+    // Never more than is in the wallet. Below the market's minimum is allowed
+    // to be shown - in red, with the figure - rather than silently clamped,
+    // so the player can see what the market wants of them.
+    this.commitment = Math.max(0, Math.min(this.walletBalance, next));
+    this.refreshCommitment();
     this.publishPlan();
   }
 
-  refreshStake() {
+  refreshCommitment() {
     if (this.practice()) {
-      this.stakeText.setText("PRACTICE");
-      this.vaultNote.setText("no money at stake in the taster");
+      this.commitmentText.setText("PRACTICE");
+      this.openingStakeText.setText("");
+      this.walletNote.setText("no money at stake in the taster");
       return;
     }
 
-    if (this.vault === null) {
-      this.stakeText.setText("reading the vault...");
+    if (this.walletBalance === null) {
+      this.commitmentText.setText("reading your wallet...");
+      this.openingStakeText.setText("");
+      this.walletNote.setText("");
       return;
     }
 
     const min = this.minStake();
-    const enough = this.stake >= min;
+    const enough = this.commitment >= min;
 
-    this.stakeText.setText(`${this.stake.toFixed(2)} USDso`);
-    this.stakeText.setColor(enough ? "#F6F740" : "#E94F37");
+    this.commitmentText.setText(`${this.commitment.toFixed(2)} USDso`);
+    this.commitmentText.setColor(enough ? "#F6F740" : "#E94F37");
+
+    // Derived, never edited directly - the opening stake is what actually
+    // buys the position; the rest stays behind as headroom for `F`.
+    const { openingStake } = deriveOpeningStake(
+      this.commitment,
+      min,
+      EXPOSURE_STEP
+    );
+    this.openingStake = openingStake;
+    this.openingStakeText.setText(
+      enough ? `opens at ${openingStake.toFixed(2)} USDso · rest is headroom for F` : ""
+    );
 
     // The market's own floor, stated rather than discovered when the exchange
     // refuses the order.
-    this.vaultNote.setText(
-      this.vault <= 0
-        ? "your vault is empty - add some from the panel on the right"
+    this.walletNote.setText(
+      this.walletBalance <= 0
+        ? "your wallet is empty - fund it to play for real"
         : enough
-          ? `of ${this.vault.toFixed(2)} USDso in your vault · min ${min.toFixed(2)}`
+          ? `of ${this.walletBalance.toFixed(2)} USDso in your wallet · min ${min.toFixed(2)}`
           : `this market needs at least ${min.toFixed(2)} USDso`
     );
-    this.vaultNote.setColor(
+    this.walletNote.setColor(
       enough ? "rgba(255,255,255,0.55)" : "rgba(233,79,55,0.85)"
     );
   }
@@ -377,16 +407,24 @@ export class RunSetupScene extends Phaser.Scene {
       return;
     }
 
-    if (this.vault === null) {
-      this.say("still reading your vault - one moment", "#3F88C5");
+    if (trading.canBuyIn === false) {
+      this.say(
+        "no wallet is available to fund this run - reconnect and try again",
+        "#E94F37"
+      );
+      return;
+    }
+
+    if (this.walletBalance === null) {
+      this.say("still reading your wallet - one moment", "#3F88C5");
       return;
     }
 
     const min = this.minStake();
-    if (this.stake < min) {
+    if (this.commitment < min) {
       this.say(
         `${this.market?.symbol ?? "this market"} needs at least ` +
-          `${min.toFixed(2)} USDso - your vault holds ${this.vault.toFixed(2)}`,
+          `${min.toFixed(2)} USDso - your wallet holds ${this.walletBalance.toFixed(2)}`,
         "#E94F37"
       );
       return;
@@ -394,10 +432,13 @@ export class RunSetupScene extends Phaser.Scene {
 
     this.buyingIn = true;
     this.playButton.text.setText("BUYING IN...");
-    this.say(`buying ${this.stake.toFixed(2)} USDso of ${this.market?.symbol}`, "#3F88C5");
+    this.say(
+      `committing ${this.commitment.toFixed(2)} USDso to ${this.market?.symbol}`,
+      "#3F88C5"
+    );
 
     try {
-      const opened = await trading.open(this.stake);
+      const opened = await trading.open(this.commitment, this.openingStake);
       if (!opened) {
         this.say("the exchange refused the order", "#E94F37");
         return;
@@ -406,7 +447,12 @@ export class RunSetupScene extends Phaser.Scene {
       this.sound.stopAll();
       this.scene.start("GameScene");
     } catch (e) {
-      this.say(`could not buy in: ${e?.message ?? "no reason given"}`, "#E94F37");
+      // `BuyInError.message` already carries the right words for both
+      // outcomes - once `fundsAtExchange` the wording says the money is safe
+      // at the exchange and coming back, otherwise it says nothing left the
+      // wallet - so this shows the message as given rather than re-wording
+      // it and risking the two getting swapped.
+      this.say(e?.message ?? "could not buy in: no reason given", "#E94F37");
     } finally {
       this.buyingIn = false;
       if (this.scene.isActive("RunSetupScene")) {

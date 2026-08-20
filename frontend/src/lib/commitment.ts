@@ -14,6 +14,17 @@
  * commitment is actually put at risk.
  */
 
+/**
+ * The USDso a single `F` press adds to a live position.
+ *
+ * Exported once and imported everywhere it is needed - `GameScene.js` for the
+ * actual top-up, `RunSetupScene.js` for the headroom this reserves - so the
+ * two never drift apart. A silent mismatch here does not error or fail a
+ * test: it either starves the top-up mechanic mid-run (reserve too small) or
+ * stakes less than a player asked for (reserve too large).
+ */
+export const EXPOSURE_STEP = 0.5;
+
 export interface OpeningStake {
   /** What actually buys the position, key-signed, no wallet popup. */
   openingStake: number;

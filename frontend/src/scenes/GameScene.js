@@ -2,6 +2,7 @@ import { MarketDataProvider } from "@/data/MarketDataProvider.js";
 import { DreamdexLiveFeed } from "@/data/DreamdexLiveFeed.js";
 import { KeyboardTimerController } from "@/utils/KeyboardTimerController.js";
 import { shouldStartTremor } from "@/utils/tremorCooldown.js";
+import { EXPOSURE_STEP } from "@/lib/commitment";
 
 // The design's three faces, named once so no text in this scene can quietly
 // fall back to a system font. Pixel for labels and numbers, mono for data,
@@ -64,7 +65,7 @@ export class GameScene extends Phaser.Scene {
     this.maxFragilityBonus = 0.5; // A vanished book reaches half again as far
     this.maxExposureBonus = 0.6; // A tripled position reaches 60% further
     this.maxTotalReach = 2.0; // Both bonuses together still stop here
-    this.exposureStep = 0.5; // USDso added per top-up
+    this.exposureStep = EXPOSURE_STEP; // USDso added per top-up
     this.stopLossPct = 10; // Sell automatically if the position falls this far
     this.rocketTrail = []; // Store trail points for visual effect
 
@@ -701,7 +702,8 @@ export class GameScene extends Phaser.Scene {
 
       if (result) {
         this.showEjectNotice(
-          `Took profit - ${result.proceeds.toFixed(4)} USDso back. Play on.`
+          `Took profit - ${result.proceeds.toFixed(4)} USDso back. Play on.` +
+            this.sweepFailureSuffix(result)
         );
       }
     } catch {
@@ -743,7 +745,8 @@ export class GameScene extends Phaser.Scene {
 
       if (result) {
         this.showEjectNotice(
-          `Stopped out - ${result.proceeds.toFixed(4)} USDso back. Play on.`
+          `Stopped out - ${result.proceeds.toFixed(4)} USDso back. Play on.` +
+            this.sweepFailureSuffix(result)
         );
       }
     } catch {
@@ -779,7 +782,8 @@ export class GameScene extends Phaser.Scene {
       if (result) {
         const sign = result.pnl >= 0 ? "+" : "";
         this.showEjectNotice(
-          `Ejected - you keep ${result.proceeds.toFixed(4)} USDso (${sign}${result.pnl.toFixed(4)})`
+          `Ejected - you keep ${result.proceeds.toFixed(4)} USDso (${sign}${result.pnl.toFixed(4)})` +
+            this.sweepFailureSuffix(result)
         );
       }
     } catch {
@@ -787,6 +791,17 @@ export class GameScene extends Phaser.Scene {
     } finally {
       this.ejecting = false;
     }
+  }
+
+  /**
+   * A closed position that came home is silent by design - the sweep is
+   * routine. A sweep that FAILED is not: the P&L above is real and must not be
+   * held back for it, but the player's money is now sitting at the exchange
+   * rather than back in their wallet, and only this line says so.
+   */
+  sweepFailureSuffix(result) {
+    if (!result?.sweepError) return "";
+    return ` Your money is still at the exchange and will be offered back.`;
   }
 
   setUpEjectKey() {
