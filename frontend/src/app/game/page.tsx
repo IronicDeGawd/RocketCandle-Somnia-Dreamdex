@@ -2,7 +2,7 @@
 
 import { parseUnits } from "viem";
 import { useApp } from "../providers";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
@@ -27,6 +27,7 @@ import {
   openAttestationSession,
   AttestationError,
 } from "@/lib/attestation";
+import { mapWalletError } from "@/lib/walletErrors";
 import Navbar from "@/components/layout/Navbar";
 import NotificationSystem, {
   useNotifications,
@@ -170,12 +171,18 @@ export default function GamePage() {
   }, [tokenName, tokenNameError]);
 
   const {
-    writeContract,
+    writeContractAsync,
     data: hash,
     isPending,
     error: writeError,
   } = useWriteContract();
   const { signMessageAsync } = useSignMessage();
+  // A wallet/RPC failure the catch block below already turned into a
+  // friendly notification lands in the hook's own error state a beat later
+  // too - same Error instance, since wagmi's mutation throws and records the
+  // identical object. Tracking which one was already shown stops that
+  // second, raw-text notification from firing for the same failure.
+  const notifiedWriteErrorRef = useRef<unknown>(null);
   const {
     isLoading: isConfirming,
     isSuccess,
@@ -186,17 +193,30 @@ export default function GamePage() {
   });
 
   // Debug transaction errors
+  //
+  // This is the fallback path, not the primary one - the catch block in
+  // handleGameComplete already shows a friendly notification for anything
+  // writeContractAsync throws. It only reaches here for a failure that
+  // never went through that call at all (or in case the ordering above
+  // ever changes), so any wallet/RPC text has to be mapped the same way
+  // rather than shown as-is.
   useEffect(() => {
-    if (writeError) {
+    if (writeError && notifiedWriteErrorRef.current !== writeError) {
       console.error("❌ Write contract error:", writeError);
-      notifyError("Transaction Failed", writeError.message);
+      notifiedWriteErrorRef.current = writeError;
+      const { title, message } = mapWalletError(writeError);
+      notifyError(title, message);
     }
   }, [writeError, notifyError]);
 
+  // No dedupe ref needed here (unlike the writeError effect above): a given
+  // receipt error object only appears once, on the hop where the receipt
+  // wait settles, and this effect never re-fires for the same object.
   useEffect(() => {
     if (receiptError) {
       console.error("❌ Receipt error:", receiptError);
-      notifyError("Receipt Error", receiptError.message);
+      const { title, message } = mapWalletError(receiptError);
+      notifyError(title, message);
     }
   }, [receiptError, notifyError]);
 
@@ -368,7 +388,7 @@ export default function GamePage() {
       // real figure replaces it once the transaction settles.
       notifyScoreProjected(score, expectedTokens);
 
-      const writeResult = writeContract({
+      const writeResult = await writeContractAsync({
         address: contractAddress as `0x${string}`,
         abi: GAME_CONTRACT_ABI,
         functionName: "submitScore",
@@ -416,10 +436,14 @@ export default function GamePage() {
         return;
       }
 
-      const errorMessage = (error as Error)?.message?.includes("rejected")
-        ? "Transaction was rejected by user"
-        : "Failed to submit to blockchain. Please try again.";
-      notifyError("Submission Failed", errorMessage);
+      // Every remaining failure - the wallet popup being closed, a chain
+      // mismatch, a revert, or anything else - goes through the one mapping
+      // that also backs the write-error effect above. Recording it here
+      // stops that effect from showing the same failure a second time once
+      // the hook's own error state catches up a beat later.
+      notifiedWriteErrorRef.current = error;
+      const { title, message } = mapWalletError(error);
+      notifyError(title, message);
     } finally {
       setIsSubmittingScore(false);
     }
