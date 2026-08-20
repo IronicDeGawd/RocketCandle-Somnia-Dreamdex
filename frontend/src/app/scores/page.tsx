@@ -348,6 +348,9 @@ export default function ScoresPage() {
                 REFRESH
               </button>
             </div>
+            <div className="sc-panel-footer sc-panel-footer--note">
+              An unclaimed share rolls into a later week&apos;s pot after 3 weeks — claim it before then.
+            </div>
           </div>
 
           {/* Player History + lifetime stats */}

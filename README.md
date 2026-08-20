@@ -138,6 +138,33 @@ quiet one pays less, and the pot can never pay out more than went into it — so
 somebody farming points mostly dilutes themselves. The pot is held in USDso and
 the only way out of the contract is a player claiming their own share.
 
+**Claim window.** A week's pot stays claimable for three weeks after it
+closes. The grace period is counted as four weeks from when the scored week
+began, not from when it closes, and one of those four weeks is spent waiting
+for the week itself to end — so the real safety margin after closing is three
+weeks, not four. Once a week is that old, `rollOverWeek` lets anybody push its
+unclaimed remainder into the current week's pot — no owner privilege
+involved, the money never leaves the contract, it just pays a later week's
+players instead. A share you never claimed within that window is gone for
+good, so claim it before it ages out.
+
+**What the owner can and cannot do.** The owner can rotate the signing key with
+`setRunAttestor`, pause player actions with `setPaused`, move WICK with
+`emergencyTokenTransfer`, and — only while the redeploy migration window is
+open — carry a player's score and treasury WICK over with `migratePlayer`
+before closing that window for good with `sealMigration`. These five sit
+behind `onlyOwner` and all touch WICK or contract state, never the USDso pot —
+though the owner address itself can be transferred or permanently renounced
+(standard OpenZeppelin `Ownable`), so who holds these five powers can change,
+even though it still never gains access to the USDso pot.
+`emergencyTokenTransfer` calls the WICK contract's own `_transfer`, not the
+stake token, so it has no path to the prize pot at all — the only way USDso
+leaves the contract is a player calling `claimWeeklyShare` for their own share.
+The WICK side is a real power, not a token one: the contract launches holding a
+9,000,000 WICK reserve, every score reward and migration is paid out of it, and
+the owner can move it. Both claims are checkable against
+`hardhat-contracts/contracts/RocketCandleGame.sol`.
+
 ## Building on Somnia
 
 Somnia does not price gas the way Ethereum does, and the differences are
