@@ -1,6 +1,7 @@
 import { MarketDataProvider } from "@/data/MarketDataProvider.js";
 import { DreamdexLiveFeed } from "@/data/DreamdexLiveFeed.js";
 import { KeyboardTimerController } from "@/utils/KeyboardTimerController.js";
+import { shouldStartTremor } from "@/utils/tremorCooldown.js";
 
 // The design's three faces, named once so no text in this scene can quietly
 // fall back to a system font. Pixel for labels and numbers, mono for data,
@@ -201,6 +202,22 @@ export class GameScene extends Phaser.Scene {
     // Set camera bounds
     this.cameras.main.setBounds(0, 0, 1200, 600);
 
+    // A second camera, laid on top of the main one, renders only the world
+    // objects that should react to a market shock (barriers, the launcher,
+    // rockets, enemies, their impact effects). It is the ONLY camera ever
+    // shaken. The main camera never moves, so the background, the ground
+    // and every in-canvas notice stay put - a tremor reads as the terrain
+    // being struck rather than the whole frame sliding. See keepFixed() /
+    // makeShakeable() for how objects are sorted onto one camera or the
+    // other, and fireTremor() for the shake itself.
+    this.shakeCamera = this.cameras.add(0, 0, 1200, 600);
+    this.shakeCamera.setBounds(0, 0, 1200, 600);
+
+    // Cooldown state for the live-feed tremor. Reset here in create(), same
+    // as when a replay rebuilds the scene from scratch.
+    this.lastTremorAt = 0;
+    this.tremorActiveUntil = 0;
+
     // Add background image
     this.backgroundImage = this.add
       .image(600, 300, "game-background")
@@ -209,6 +226,7 @@ export class GameScene extends Phaser.Scene {
 
     // Set the background image as the deepest layer
     this.backgroundImage.setDepth(-1000);
+    this.keepFixed(this.backgroundImage);
 
     // Initialize wallet and Web3 services
     this.initializeWeb3();
@@ -249,9 +267,6 @@ export class GameScene extends Phaser.Scene {
     // Create trajectory prediction system
     this.createTrajectorySystem();
 
-    // Create graphics object for rocket trails
-    this.trailGraphics = this.add.graphics();
-
     // Set up keyboard controls
     this.setupKeyboardControls();
   }
@@ -272,6 +287,68 @@ export class GameScene extends Phaser.Scene {
     if (this.walletConnected) {
       this.loadWickBalance();
     }
+  }
+
+  /**
+   * Keep a game object stationary through any tremor.
+   *
+   * Rendered only by the main camera, which never shakes. Use for the
+   * background, the ground blocks, the launcher and its base, the
+   * trajectory graphics and every in-canvas notice/popup/text - anything
+   * that should read as part of the fixed frame rather than the struck
+   * world. The launcher stays here deliberately: it is bolted to the fixed
+   * ground, so it must not jitter independently or it would look detached
+   * and throw off the player's aim reference.
+   *
+   * @param {Phaser.GameObjects.GameObject} gameObject
+   */
+  keepFixed(gameObject) {
+    if (this.shakeCamera) this.shakeCamera.ignore(gameObject);
+  }
+
+  /**
+   * Make a game object react to a tremor.
+   *
+   * Rendered only by the shake camera, so it moves when fireTremor() runs
+   * and sits still otherwise. Use for barriers, rockets, enemies and their
+   * impact effects (explosions, particles, flashes, death effects, trails).
+   * The launcher is NOT here - it is kept fixed alongside the ground it is
+   * bolted to (see keepFixed()).
+   *
+   * @param {Phaser.GameObjects.GameObject} gameObject
+   */
+  makeShakeable(gameObject) {
+    this.cameras.main.ignore(gameObject);
+  }
+
+  /**
+   * Shake the world camera, subject to the tremor cooldown.
+   *
+   * Only the live-feed tremor (onMarketTrade) is rate-limited - see
+   * shouldStartTremor(). A barrier breaking or a rocket detonating are each
+   * one-off events already bounded by gameplay, so they always fire.
+   *
+   * @param {number} duration ms
+   * @param {number} intensity fraction of the viewport
+   * @param {boolean} [gated] apply the cooldown gate
+   */
+  fireTremor(duration, intensity, gated = false) {
+    if (gated) {
+      const now = this.time.now;
+      if (
+        !shouldStartTremor({
+          now,
+          lastTremorAt: this.lastTremorAt,
+          tremorActiveUntil: this.tremorActiveUntil,
+        })
+      ) {
+        return;
+      }
+      this.lastTremorAt = now;
+      this.tremorActiveUntil = now + duration;
+    }
+
+    this.shakeCamera.shake(duration, intensity);
   }
 
   /**
@@ -344,6 +421,8 @@ export class GameScene extends Phaser.Scene {
       groundBlock.setDisplaySize(blockSize, blockSize);
       this.groundBlocks.add(groundBlock);
     }
+
+    this.keepFixed(this.groundBlocks);
 
     // Create physics body for ground collision
     this.groundBody = this.physics.add.staticGroup();
@@ -762,6 +841,7 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setDepth(1000);
+    this.keepFixed(notice);
 
     this.tweens.add({
       targets: notice,
@@ -883,7 +963,12 @@ export class GameScene extends Phaser.Scene {
     // Intensity is a fraction of the viewport, so the old 0.001 moved the
     // camera by well under a pixel - the tremor fired on every trade and was
     // invisible. Enough travel to be felt, not enough to spoil an aim.
-    this.cameras.main.shake(120 + strength * 60, 0.004 * strength);
+    //
+    // Raising it to 0.004 fixed that, but nobody then capped the rate: on a
+    // live feed, trades land faster than a single shake (120-360ms) can
+    // finish, so gated=true refuses to start a new one until the last has
+    // both finished and cleared a minimum gap - see shouldStartTremor().
+    this.fireTremor(120 + strength * 60, 0.004 * strength, true);
   }
 
   /**
@@ -969,7 +1054,8 @@ export class GameScene extends Phaser.Scene {
 
     if (!target || !target.blocks || !target.blocks.length) return;
 
-    this.cameras.main.shake(400, 0.008);
+    // A one-off event, not the live-feed tremor, so no cooldown gate.
+    this.fireTremor(400, 0.008);
 
     // Where the notice goes: at the wall that is coming down, not floating in
     // the middle of the screen. Read before the blocks are cleared.
@@ -1049,6 +1135,7 @@ export class GameScene extends Phaser.Scene {
     face.fillRect(-width / 2 + 4, -height / 2 + 4, width - 8, height - 8);
 
     plate.add([face, label, reason]);
+    this.keepFixed(plate);
 
     this.breakoutNotice = plate;
 
@@ -1471,6 +1558,7 @@ export class GameScene extends Phaser.Scene {
       // Add to candlesticks physics group for collision detection
       this.candlesticks.add(block);
       block.body.setSize(barWidth, blockSize);
+      this.makeShakeable(block);
 
       candlestickBlocks.push(block);
     }
@@ -1602,6 +1690,7 @@ export class GameScene extends Phaser.Scene {
     // Add to physics group manually
     this.physics.add.existing(block, true); // true makes it static/immovable
     this.blocks.add(block);
+    this.makeShakeable(block);
 
     // Set physics body size to match the scaled sprite
     block.body.setSize(width, height);
@@ -1634,6 +1723,7 @@ export class GameScene extends Phaser.Scene {
     // Add to physics group manually
     this.physics.add.existing(enemy);
     this.enemies.add(enemy);
+    this.makeShakeable(enemy);
 
     // Set collision body size to match the scaled sprite dimensions
     // Since the sprite is scaled to 0.8, the effective size is 40x40px
@@ -1694,6 +1784,11 @@ export class GameScene extends Phaser.Scene {
     this.launcherBase.setDepth(4);
     this.launcher.setDepth(5);
 
+    // Bolted to the ground, which is itself fixed - the player's own aim
+    // should never wobble because someone else traded.
+    this.keepFixed(this.launcherBase);
+    this.keepFixed(this.launcher);
+
     this.updateLauncherRotation();
   }
 
@@ -1749,6 +1844,7 @@ export class GameScene extends Phaser.Scene {
       this.launcher.y - Math.sin(angleRad) * 58,
       "rocket"
     );
+    this.makeShakeable(rocket);
 
     // Set rocket physics properties
     rocket.setVelocity(velocityX, velocityY);
@@ -1796,6 +1892,8 @@ export class GameScene extends Phaser.Scene {
   createTrajectorySystem() {
     // Create graphics object for trajectory line
     this.trajectoryGraphics = this.add.graphics();
+    // The player's aim, never the market's business - it should never wobble.
+    this.keepFixed(this.trajectoryGraphics);
 
     // Initial trajectory calculation
     this.updateTrajectory();
@@ -2147,6 +2245,7 @@ export class GameScene extends Phaser.Scene {
     // Yellow, not the purple this used to be: purple is not one of the five
     // colours this game is allowed to use, and it read as a different game.
     const explosionCircle = this.add.circle(x, y, 5, RC_YELLOW, 0.8);
+    this.makeShakeable(explosionCircle);
 
     // Animate explosion expansion
     this.tweens.add({
@@ -2168,14 +2267,16 @@ export class GameScene extends Phaser.Scene {
       lifespan: 500, // Longer lifespan for more impact
       quantity: 18, // More particles for better coverage
     });
+    this.makeShakeable(particles);
 
     // Clean up particles after explosion
     this.time.delayedCall(500, () => {
       particles.destroy();
     });
 
-    // Add stronger screen shake effect for larger explosion
-    this.cameras.main.shake(300, 0.015);
+    // Add stronger screen shake effect for larger explosion. A one-off
+    // event, not the live-feed tremor, so no cooldown gate.
+    this.fireTremor(300, 0.015);
   }
 
   /**
@@ -2241,6 +2342,7 @@ export class GameScene extends Phaser.Scene {
       lifespan: 200,
       quantity: 4,
     });
+    this.makeShakeable(particles);
 
     // Clean up particles
     this.time.delayedCall(300, () => {
@@ -2271,6 +2373,7 @@ export class GameScene extends Phaser.Scene {
     const flash = this.add.image(x, y, "enemy-var1").setDepth(800);
     flash.setDisplaySize(enemy.displayWidth, enemy.displayHeight);
     flash.setTintFill(0xffffff);
+    this.makeShakeable(flash);
     // Guarded: killing the last enemy of a level ends it, and the level
     // teardown can destroy this sprite before these fire.
     this.time.delayedCall(60, () => {
@@ -2283,6 +2386,7 @@ export class GameScene extends Phaser.Scene {
     enemy.destroy();
 
     const deathEffect = this.add.circle(x, y, 15, RC_RED, 0.6);
+    this.makeShakeable(deathEffect);
 
     this.tweens.add({
       targets: deathEffect,
@@ -2320,6 +2424,7 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setDepth(900);
+    this.keepFixed(text);
 
     // The hard offset shadow every surface in this design has, done as a
     // stroke because canvas text has no box to cast one from.
@@ -2432,6 +2537,7 @@ export class GameScene extends Phaser.Scene {
 
     // Create level transition overlay
     const overlay = this.add.rectangle(600, 300, 1200, 600, 0x000000, 0.7);
+    this.keepFixed(overlay);
 
     // Level title
     const titleText = this.add
@@ -2442,6 +2548,7 @@ export class GameScene extends Phaser.Scene {
         fontFamily: PIXEL_FONT,
       })
       .setOrigin(0.5);
+    this.keepFixed(titleText);
 
     // Level name
     const nameText = this.add
@@ -2451,6 +2558,7 @@ export class GameScene extends Phaser.Scene {
         fontFamily: PIXEL_FONT,
       })
       .setOrigin(0.5);
+    this.keepFixed(nameText);
 
     // Difficulty
     const difficultyText = this.add
@@ -2460,6 +2568,7 @@ export class GameScene extends Phaser.Scene {
         fontFamily: PIXEL_FONT,
       })
       .setOrigin(0.5);
+    this.keepFixed(difficultyText);
 
     // Fade out transition after 2 seconds
     this.time.delayedCall(2000, () => {
@@ -2792,6 +2901,7 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setAlpha(0);
+    this.keepFixed(messageText);
 
     // Animate message
     this.tweens.add({
@@ -2948,6 +3058,7 @@ export class GameScene extends Phaser.Scene {
     // Draw trail if we have at least 2 points
     if (rocket.trailPoints.length >= 2 && !rocket.trailGraphics) {
       rocket.trailGraphics = this.add.graphics();
+      this.makeShakeable(rocket.trailGraphics);
     }
 
     if (rocket.trailGraphics && rocket.trailPoints.length >= 2) {
