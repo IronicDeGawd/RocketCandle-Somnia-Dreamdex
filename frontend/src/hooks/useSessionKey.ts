@@ -229,7 +229,6 @@ export interface UseSessionKey {
    */
   sweepHome: (symbol: string) => Promise<{ quote: number; base: number }>;
   revoke: (symbol: string) => Promise<void>;
-  withdrawAll: (symbol: string, usdsoAmount: string) => Promise<void>;
 }
 
 /**
@@ -510,6 +509,30 @@ export function useSessionKey(symbol?: string): UseSessionKey {
    * gets a correct plan instead of a deposit that reverts on its own
    * allowance check.
    */
+  /*
+   * Resolve the pool for the symbol we were ASKED about.
+   *
+   * This used to read `market ?? await fetchMarket(symbol)`, which silently
+   * ignored the argument whenever the hook already held a market. That is
+   * wrong for anything that acts on a market other than the active one - and
+   * the recovery sweep does exactly that, walking every market that still
+   * holds money. It would read and withdraw from the ACTIVE pool instead of
+   * the stranded one, so the money never came home and the notice never
+   * cleared: the recovery feature defeating itself while reporting success.
+   *
+   * The cached value is still used, but only when it is genuinely the same
+   * market.
+   */
+  const marketFor = useCallback(
+    async (symbol: string) => {
+      if (market && market.symbol === symbol) return market;
+      const meta = await fetchMarket(symbol);
+      if (!meta) throw new Error(`Market ${symbol} not found`);
+      return meta;
+    },
+    [market]
+  );
+
   const depositFor = useCallback(
     async (symbol: string, usdsoAmount: string) => {
       /*
@@ -552,7 +575,7 @@ export function useSessionKey(symbol?: string): UseSessionKey {
       }
 
       try {
-        const meta = market ?? (await fetchMarket(symbol));
+        const meta = await marketFor(symbol);
         if (!meta) throw new Error(`Market ${symbol} not found`);
 
         const amount = parseUnits(usdsoAmount, meta.quoteDecimals);
@@ -621,7 +644,7 @@ export function useSessionKey(symbol?: string): UseSessionKey {
         throw new Error(`Your wallet is not on ${somniaNetwork.name}`);
       }
 
-      const meta = market ?? (await fetchMarket(symbol));
+      const meta = await marketFor(symbol);
       if (!meta) throw new Error(`Market ${symbol} not found`);
 
       const [quoteRaw, baseRaw] = await Promise.all([
@@ -754,7 +777,7 @@ export function useSessionKey(symbol?: string): UseSessionKey {
       setStep("revoking");
 
       try {
-        const meta = market ?? (await fetchMarket(symbol));
+        const meta = await marketFor(symbol);
         if (!meta) throw new Error(`Market ${symbol} not found`);
 
         /*
@@ -835,34 +858,6 @@ export function useSessionKey(symbol?: string): UseSessionKey {
     ]
   );
 
-  /** Take the working capital back out of the vault. Owner only, by design. */
-  const withdrawAll = useCallback(
-    async (symbol: string, usdsoAmount: string) => {
-      if (!walletClient || !publicClient || !address) return;
-
-      setError(null);
-
-      try {
-        const meta = market ?? (await fetchMarket(symbol));
-        if (!meta) throw new Error(`Market ${symbol} not found`);
-
-        // Same trap as the revoke: a refused withdrawal used to look like a
-        // completed one, because only the receipt was awaited.
-        await sendChecked(publicClient, walletClient, address, {
-          label: "the withdrawal",
-          address: meta.pool,
-          abi: SPOT_POOL_ABI,
-          functionName: "withdraw",
-          args: [USDSO_ADDRESS, parseUnits(usdsoAmount, meta.quoteDecimals)],
-        });
-      } catch (e) {
-        console.error("Failed to withdraw from the vault:", e);
-        setError(mapWalletError(e).message);
-      }
-    },
-    [walletClient, publicClient, address, market]
-  );
-
   return {
     sessionKey,
     authorized,
@@ -884,6 +879,5 @@ export function useSessionKey(symbol?: string): UseSessionKey {
     depositFor,
     sweepHome,
     revoke,
-    withdrawAll,
   };
 }
