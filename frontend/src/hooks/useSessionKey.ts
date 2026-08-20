@@ -106,6 +106,17 @@ async function runSteps(
 
   if (steps.length === 1) return sequential();
 
+  /*
+   * Whether the batch actually reached the wallet.
+   *
+   * This is the difference between "cannot batch" and "batched and something
+   * went wrong", and it decides whether retrying is safe. The batch is NOT
+   * atomic - it cannot be, since the steps depend on each other in order - so
+   * some calls may have executed. Re-running the lot from the top would then
+   * repeat a payment: with approve-then-deposit, a second genuine deposit.
+   */
+  let submitted = false;
+
   try {
     const { id } = await signer.sendCalls({
       account: signer.account ?? account,
@@ -123,11 +134,44 @@ async function runSteps(
       })),
     } as never);
 
+    submitted = true;
+
     const result = await signer.waitForCallsStatus({ id });
-    if (result.status !== "success") throw new Error("batch failed");
-  } catch {
-    // Either the wallet refused to batch, or the batch failed and the reason
-    // is worth finding. Both end in the same place.
+
+    /*
+     * Every call checked, not just the aggregate.
+     *
+     * A reverted transaction produces a receipt exactly like a successful one,
+     * and the sequential path learned that lesson the hard way. An overall
+     * "success" on a bundle says the bundle was processed, not that each call
+     * inside it did what it meant to - so a wallet reporting success over a
+     * reverted deposit would leave this believing money had moved.
+     */
+    const receipts = (result as { receipts?: { status?: unknown }[] }).receipts;
+
+    if (result.status !== "success") throw new Error("the batch did not succeed");
+    if (!receipts || receipts.length !== steps.length) {
+      throw new Error("the wallet did not report a receipt for every step");
+    }
+    const failed = receipts.findIndex(
+      (r) => r.status !== "success" && r.status !== 1n && r.status !== 1
+    );
+    if (failed !== -1) {
+      throw new Error(`${steps[failed].label} was rejected on chain`);
+    }
+  } catch (e) {
+    if (submitted) {
+      /*
+       * Deliberately not retried. Some of these calls may already have run,
+       * and repeating them is how a player pays twice. Surfacing the failure
+       * leaves the money recoverable through the return path, which is the
+       * outcome we can actually reason about.
+       */
+      throw e instanceof Error ? e : new Error(String(e));
+    }
+
+    // Never left the wallet - it simply cannot batch. Safe to do them one by
+    // one, each receipt checked.
     await sequential();
   }
 }
@@ -684,13 +728,43 @@ export function useSessionKey(symbol?: string): UseSessionKey {
         });
       }
 
-      if (steps.length > 0) {
-        await runSteps(publicClient, signer, address, steps);
-      }
+      if (steps.length === 0) return { quote: 0, base: 0 };
+
+      await runSteps(publicClient, signer, address, steps);
+
+      /*
+       * Report what actually left, by reading the pool again.
+       *
+       * This used to return the balances read BEFORE the sweep, which is a
+       * statement about what was there, not about what came home. A withdrawal
+       * that moved less than asked - or nothing - was reported as a full
+       * success, and `close()` records exactly this object as what the player
+       * got back. Reading afterwards and subtracting is the only version that
+       * cannot overstate it.
+       */
+      const [quoteLeft, baseLeft] = await Promise.all([
+        publicClient.readContract({
+          address: meta.pool,
+          abi: TRADING_POOL_ABI,
+          functionName: "getWithdrawableBalance",
+          args: [address, USDSO_ADDRESS],
+        }) as Promise<bigint>,
+        publicClient.readContract({
+          address: meta.pool,
+          abi: TRADING_POOL_ABI,
+          functionName: "getWithdrawableBalance",
+          args: [address, meta.base],
+        }) as Promise<bigint>,
+      ]);
+
+      // Clamped at zero: a balance that somehow GREW between the two reads is
+      // not money this sweep brought home.
+      const moved = (before: bigint, after: bigint) =>
+        after >= before ? 0n : before - after;
 
       return {
-        quote: fromRaw(quoteRaw, meta.quoteDecimals),
-        base: fromRaw(baseRaw, meta.baseDecimals),
+        quote: fromRaw(moved(quoteRaw, quoteLeft), meta.quoteDecimals),
+        base: fromRaw(moved(baseRaw, baseLeft), meta.baseDecimals),
       };
     },
     [walletClient, publicClient, address, market, chainId, switchChainAsync]

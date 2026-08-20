@@ -132,7 +132,17 @@ export function useVaultReturn(
             marketId: game.id,
             symbol: game.symbol,
             quote: result.quote,
-            base: result.base,
+            /*
+             * Sellable and dust added back together.
+             *
+             * The split matters when deciding whether an ORDER can be placed;
+             * this notice is about what comes home, and a sweep withdraws the
+             * whole balance. Reporting only the sellable part would announce
+             * "0.00 is still at the exchange" for a pool holding nothing but
+             * dust - which is how that money became invisible in the first
+             * place.
+             */
+            base: result.base + result.dust,
           };
         } catch {
           // One market being unreadable must not gate the other three - the
@@ -217,7 +227,7 @@ export function useVaultReturn(
               positionOpen: false,
               minQuantity: meta.minQuantity,
             })
-          : { strandable: true, quote, base };
+          : { strandable: true, quote, base, dust: 0 };
 
         setEntries((prev) => {
           if (!result.strandable) {
@@ -228,7 +238,9 @@ export function useVaultReturn(
               ? {
                   ...e,
                   quote: result.quote,
-                  base: result.base,
+                  // Same reason as the first read: this figure is what is left
+                  // to come home, not what could be sold.
+                  base: result.base + result.dust,
                   attempting: false,
                   error: null,
                 }

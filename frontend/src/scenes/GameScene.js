@@ -821,11 +821,34 @@ export class GameScene extends Phaser.Scene {
     const bridge = this.getTradingBridge();
     if (!bridge || !this.position?.open || this.buyingFirepower) return;
 
+    /*
+     * Stand aside while the position is being sold.
+     *
+     * The floor, the target and a manual eject all end the run's trade. Adding
+     * to a position that is halfway out of the door buys tokens nothing is
+     * watching - and the sell must never be the one that gets dropped, so it
+     * is this side that yields. The bridge refuses it too; this only avoids
+     * asking.
+     */
+    if (this.ejecting || this.stopTriggered || this.targetTriggered) return;
+
     this.buyingFirepower = true;
     this.showEjectNotice(`Buying firepower - staking ${this.exposureStep} more...`);
 
     try {
-      this.position = await bridge.addExposure(this.exposureStep);
+      const grown = await bridge.addExposure(this.exposureStep);
+
+      /*
+       * A refusal comes back as nothing, and assigning that would tell the
+       * game the position had CLOSED - blast radius reset, nothing at risk,
+       * while the money is still very much in the market.
+       */
+      if (!grown) {
+        this.showEjectNotice("Busy - try that again in a moment");
+        return;
+      }
+
+      this.position = grown;
       this.recalculateBlastRadius();
       this.updatePositionText();
       this.updateFeeCounter();

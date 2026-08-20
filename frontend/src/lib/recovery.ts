@@ -26,12 +26,25 @@ export interface RecoveryInput {
 }
 
 export interface RecoveryResult {
-  /** Whether there is money worth telling the player about. */
+  /**
+   * Whether there is anything in the pool worth withdrawing.
+   *
+   * Drives whether a sweep is attempted, so it counts dust too: a sweep is a
+   * withdrawal and can always bring dust home, even when it is too small to
+   * sell.
+   */
   strandable: boolean;
   /** USDso reportable on the quote side. */
   quote: number;
-  /** Base-token units reportable on the base side. */
+  /** Base-token units large enough for the exchange to accept an order for. */
   base: number;
+  /**
+   * Base-token units below the exchange's minimum order size.
+   *
+   * Withdrawable but not sellable. Kept apart so a caller can sweep it without
+   * announcing it as something the player can act on.
+   */
+  dust: number;
 }
 
 /**
@@ -41,14 +54,18 @@ export interface RecoveryResult {
  * it there would tell a player their live position's own capital needs to be
  * "returned", which is false and would only confuse someone mid-run.
  *
- * Base-side dust below the exchange's own minimum order size is real money
- * and still fully withdrawable (a sweep pulls the whole balance, not an
- * order), but it is not SELLABLE at that size - the exchange itself would
- * refuse an order for it. Announcing it as "returnable" would read like
- * something actionable when the only action available is a plain withdrawal
- * of an amount too small to matter. So dust is excluded from `strandable`
- * and from the reported `base` figure: this function's job is to decide what
- * is worth *surfacing*, not to account for every wei the pool holds.
+ * Too small to SELL is not the same as too small to RETURN, and conflating the
+ * two used to lose the money. Base-side dust below the exchange's minimum order
+ * size cannot be sold - the exchange would refuse the order - but a sweep is a
+ * withdrawal, not an order, so it comes home perfectly well. Excluding dust
+ * from `strandable` meant a pool holding nothing but dust got no sweep attempt
+ * and no notice: real, withdrawable money with no route back except as a
+ * by-product of some future run on that same market.
+ *
+ * So `strandable` now means "there is something to withdraw". `base` stays the
+ * SELLABLE figure, for anything deciding what to say, and `dust` carries the
+ * remainder so a caller can bring it home without announcing it as though the
+ * player could act on it.
  */
 export function detectStrandedFunds(input: RecoveryInput): RecoveryResult {
   const quote = finiteNonNegative(input.quote);
@@ -60,15 +77,20 @@ export function detectStrandedFunds(input: RecoveryInput): RecoveryResult {
   // Working capital, not stranded capital - never report while a position is
   // open, no matter what the pool reads.
   if (input.positionOpen) {
-    return { strandable: false, quote: 0, base: 0 };
+    return { strandable: false, quote: 0, base: 0, dust: 0 };
   }
 
-  const base = rawBase >= minSellable ? rawBase : 0;
+  const sellable = rawBase >= minSellable;
+  const base = sellable ? rawBase : 0;
+  const dust = sellable ? 0 : rawBase;
 
   return {
-    strandable: quote > 0 || base > 0,
+    // Anything withdrawable at all, dust included - this decides whether a
+    // sweep is attempted, and a sweep can always bring dust home.
+    strandable: quote > 0 || rawBase > 0,
     quote,
     base,
+    dust,
   };
 }
 

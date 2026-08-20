@@ -93,7 +93,7 @@ describe("detectStrandedFunds", () => {
     assert.equal(result.base, 0, "dust below minQuantity is not sellable, so it is not surfaced");
   });
 
-  test("base dust alone, with nothing on the quote side, is not reported at all", () => {
+  test("base dust alone is still swept home, reported as dust rather than sellable", () => {
     const result = detectStrandedFunds({
       quote: 0,
       base: 0.0001,
@@ -101,8 +101,36 @@ describe("detectStrandedFunds", () => {
       minQuantity: MIN_QUANTITY,
     });
 
-    assert.equal(result.strandable, false);
-    assert.equal(result.base, 0);
+    // Too small to SELL is not too small to RETURN: a sweep is a withdrawal,
+    // not an order. Excluding it here left real money with no route back
+    // except a future run on the same market.
+    assert.equal(result.strandable, true);
+    assert.equal(result.base, 0, "not sellable, so not reported as sellable");
+    assert.equal(result.dust, 0.0001, "but still withdrawable, so still known");
+  });
+
+  test("dust is kept apart from a sellable balance", () => {
+    const sellable = detectStrandedFunds({
+      quote: 0,
+      base: Number(MIN_QUANTITY),
+      positionOpen: false,
+      minQuantity: MIN_QUANTITY,
+    });
+
+    assert.equal(sellable.base, Number(MIN_QUANTITY));
+    assert.equal(sellable.dust, 0);
+  });
+
+  test("an open position reports nothing, dust included", () => {
+    const working = detectStrandedFunds({
+      quote: 5,
+      base: 0.0001,
+      positionOpen: true,
+      minQuantity: MIN_QUANTITY,
+    });
+
+    assert.equal(working.strandable, false);
+    assert.equal(working.dust, 0);
   });
 
   test("non-finite and negative inputs are treated as nothing held", () => {

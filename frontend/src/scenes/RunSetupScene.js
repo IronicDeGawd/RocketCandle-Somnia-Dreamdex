@@ -86,6 +86,21 @@ export class RunSetupScene extends Phaser.Scene {
     this.setUpKeys();
 
     this.readWalletBalance();
+
+    /*
+     * Follow the wallet while this screen is open.
+     *
+     * It used to be read once, on arrival. After a buy-in where the deposit
+     * landed and only the buy failed, the figure on screen was the one from
+     * before the money left - so the player could commit again against a
+     * balance that no longer existed. The page republishes on its own poll;
+     * this listens for that instead of trusting a snapshot.
+     */
+    this.onWalletChange = () => this.readWalletBalance();
+    window.addEventListener("rc-hud", this.onWalletChange);
+    this.events.once("shutdown", () => {
+      window.removeEventListener("rc-hud", this.onWalletChange);
+    });
     this.publishPlan();
   }
 
@@ -385,6 +400,20 @@ export class RunSetupScene extends Phaser.Scene {
   // --- going ---------------------------------------------------------------
 
   goBack() {
+    /*
+     * Refused while money is moving.
+     *
+     * Leaving this screen did not cancel the purchase - the buy carried on and,
+     * on success, started the game regardless, dropping the player into a live
+     * funded position for a screen they had deliberately left. Refusing is the
+     * honest answer: the deposit is already signed and there is nothing to
+     * cancel, so say so and let it finish. It takes one transaction.
+     */
+    if (this.buyingIn) {
+      this.say("your money is already moving - one moment", "#F6F740");
+      return;
+    }
+
     this.sound.stopAll();
     this.scene.start("MenuScene");
   }
@@ -462,6 +491,25 @@ export class RunSetupScene extends Phaser.Scene {
       // wallet - so this shows the message as given rather than re-wording
       // it and risking the two getting swapped.
       this.say(e?.message ?? "could not buy in: no reason given", "#E94F37");
+
+      /*
+       * Re-read the wallet before the player can commit again.
+       *
+       * When the deposit landed and only the buy failed, the money has already
+       * left the wallet - but this screen was still showing the figures from
+       * before it went, so a second attempt could sign a second, genuine
+       * deposit against money that was no longer there. The default commitment
+       * spends the whole balance, which is the only reason this was not hit
+       * every time.
+       */
+      /*
+       * Treated as unknown, not merely re-read: the number this screen holds
+       * was taken before the deposit and the page may not have republished yet.
+       * `startRun` refuses while it is null, which is exactly the pause needed
+       * for a fresh figure to arrive.
+       */
+      this.walletBalance = null;
+      this.refreshCommitment();
     } finally {
       this.buyingIn = false;
       if (this.scene.isActive("RunSetupScene")) {

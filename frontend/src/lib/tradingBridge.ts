@@ -271,6 +271,54 @@ export function buildTradingBridge({
   let orderCount = 0;
 
   /*
+   * One money operation at a time, enforced here rather than trusted to the
+   * callers.
+   *
+   * Buying more and selling out both rewrite `position`, so if they overlap the
+   * one that finishes last wins: either the tokens just bought drop out of
+   * tracking and get swept home outside the reported P&L, or a position that
+   * was already sold comes back to life and the game believes more is at risk
+   * than really is. The scenes had flags for this, but each only checked its
+   * own - and a lock that lives with the state it protects cannot be forgotten
+   * by the next call site.
+   *
+   * Buying refuses while something else runs: a dropped top-up costs nothing,
+   * the player presses F again. Selling WAITS instead of refusing, because a
+   * floor or target that gets dropped is the one failure a player cannot
+   * recover from - it is the instruction that limits their loss.
+   */
+  let inFlight: Promise<unknown> | null = null;
+
+  let ticket = 0;
+
+  function guard<T>(op: () => Promise<T>): Promise<T> {
+    // A ticket rather than comparing promises: only the operation that still
+    // holds the latest one may clear the slot, so a slow finisher cannot
+    // release a lock that something newer has already taken.
+    const mine = ++ticket;
+    const running = (async () => {
+      try {
+        return await op();
+      } finally {
+        if (ticket === mine) inFlight = null;
+      }
+    })();
+    inFlight = running;
+    return running;
+  }
+
+  /** Let whatever is running finish. Its failure is the caller's business, not ours. */
+  async function settleInFlight(): Promise<void> {
+    while (inFlight) {
+      try {
+        await inFlight;
+      } catch {
+        // Swallowed on purpose: we are only waiting for the slot to free up.
+      }
+    }
+  }
+
+  /*
    * Money that has actually moved, buys and sells added together.
    *
    * Not the same as the stake: staking 1 USDso and selling it back is 2 USDso
@@ -345,6 +393,71 @@ export function buildTradingBridge({
     return snapshot;
   };
 
+  /*
+   * The buy-in itself, run under the lock.
+   *
+   * Extracted so `open` can hold `inFlight` for its whole duration rather than
+   * merely refusing to start while something else runs: a sell that arrives
+   * mid-purchase has to be able to WAIT for it, and it can only wait for an
+   * operation that actually claimed the slot.
+   */
+  async function runBuyIn(
+    commitmentUsdso: number,
+    openingStakeUsdso: number
+  ): Promise<TradingSnapshot | null> {
+    if (!canBuyIn || !depositCommitment) {
+      throw new BuyInError(
+        "No wallet is available to fund this run",
+        false
+      );
+    }
+
+    try {
+      // Owner-signed: the commitment leaves the wallet before anything is
+      // bought. Nothing has been spent yet if this step itself fails, so
+      // this is wrapped separately from the buy below - a deposit that
+      // never lands must never be told apart as "funds are at the
+      // exchange" the way a landed deposit with a failed buy is.
+      await depositCommitment(commitmentUsdso);
+    } catch (e) {
+      throw new BuyInError(
+        `Could not deposit ${commitmentUsdso} USDso (${
+          e instanceof Error ? e.message : String(e)
+        }). Nothing left your wallet.`,
+        false
+      );
+    }
+
+    try {
+      // Key-signed, no prompt: buys only the derived opening stake, leaving
+      // the rest of the commitment behind in the pool as `F`'s headroom.
+      position = await openPosition(clients, market, owner, openingStakeUsdso);
+    } catch (e) {
+      // The deposit landed; the buy did not. The commitment is sitting at
+      // the exchange with no position open - recoverable, not lost, and the
+      // wrong words here would tell a player their money is gone.
+      throw new BuyInError(
+        `Deposited ${commitmentUsdso} USDso but the buy failed (${
+          e instanceof Error ? e.message : String(e)
+        }). That money is still at the exchange and can be returned.`,
+        true
+      );
+    }
+
+    orderCount += 1;
+    addVolume(position.costUsdso, position.openTxHash);
+
+    return publish({
+      open: true,
+      stake: position.costUsdso,
+      value: position.costUsdso,
+      pnl: 0,
+      pnlPct: 0,
+      orderCount,
+      volumeUsdso,
+    });
+  }
+
   return {
     enabled: true,
     symbol: market.symbol,
@@ -412,88 +525,50 @@ export function buildTradingBridge({
     },
 
     async open(commitmentUsdso, openingStakeUsdso) {
-      if (position) return null;
+      if (position || inFlight) return null;
 
-      if (!canBuyIn || !depositCommitment) {
-        throw new BuyInError(
-          "No wallet is available to fund this run",
-          false
-        );
-      }
-
-      try {
-        // Owner-signed: the commitment leaves the wallet before anything is
-        // bought. Nothing has been spent yet if this step itself fails, so
-        // this is wrapped separately from the buy below - a deposit that
-        // never lands must never be told apart as "funds are at the
-        // exchange" the way a landed deposit with a failed buy is.
-        await depositCommitment(commitmentUsdso);
-      } catch (e) {
-        throw new BuyInError(
-          `Could not deposit ${commitmentUsdso} USDso (${
-            e instanceof Error ? e.message : String(e)
-          }). Nothing left your wallet.`,
-          false
-        );
-      }
-
-      try {
-        // Key-signed, no prompt: buys only the derived opening stake, leaving
-        // the rest of the commitment behind in the pool as `F`'s headroom.
-        position = await openPosition(clients, market, owner, openingStakeUsdso);
-      } catch (e) {
-        // The deposit landed; the buy did not. The commitment is sitting at
-        // the exchange with no position open - recoverable, not lost, and the
-        // wrong words here would tell a player their money is gone.
-        throw new BuyInError(
-          `Deposited ${commitmentUsdso} USDso but the buy failed (${
-            e instanceof Error ? e.message : String(e)
-          }). That money is still at the exchange and can be returned.`,
-          true
-        );
-      }
-
-      orderCount += 1;
-      addVolume(position.costUsdso, position.openTxHash);
-
-      return publish({
-        open: true,
-        stake: position.costUsdso,
-        value: position.costUsdso,
-        pnl: 0,
-        pnlPct: 0,
-        orderCount,
-        volumeUsdso,
-      });
+      return guard(() => runBuyIn(commitmentUsdso, openingStakeUsdso));
     },
 
     async addExposure(extraUsdso) {
-      if (!position) return null;
+      // Refused, not queued: a top-up that arrives after the position closed
+      // would buy tokens nothing is watching.
+      if (!position || inFlight) return null;
 
-      position = await addToPosition(
-        clients,
-        market,
-        owner,
-        position,
-        extraUsdso
-      );
-      orderCount += 1;
-      addVolume(extraUsdso, position.lastTxHash);
+      return guard(async () => {
+        if (!position) return null;
 
-      const marked = await markToMarket(clients, market, position);
+        position = await addToPosition(
+          clients,
+          market,
+          owner,
+          position,
+          extraUsdso
+        );
+        orderCount += 1;
+        addVolume(extraUsdso, position.lastTxHash);
 
-      return publish({
-        open: true,
-        stake: position.costUsdso,
-        value: marked?.value ?? position.costUsdso,
-        pnl: marked?.pnlUsdso ?? 0,
-        pnlPct: marked?.pnlPct ?? 0,
-        orderCount,
-        volumeUsdso,
+        const marked = await markToMarket(clients, market, position);
+
+        return publish({
+          open: true,
+          stake: position.costUsdso,
+          value: marked?.value ?? position.costUsdso,
+          pnl: marked?.pnlUsdso ?? 0,
+          pnlPct: marked?.pnlPct ?? 0,
+          orderCount,
+          volumeUsdso,
+        });
       });
     },
 
     async close() {
+      // Waits rather than refusing - see the note on `inFlight`. A top-up in
+      // flight delays this sell by one transaction; dropping it would leave the
+      // player's loss uncapped.
+      await settleInFlight();
+
+      // Re-checked after waiting: whatever we waited for may have closed it.
       if (!position) return null;
 
       // Lift the stop first. Selling while a stop still rests would leave a
