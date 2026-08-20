@@ -104,7 +104,7 @@ buying nothing.
 | Explorer | `https://shannon-explorer.somnia.network` |
 | Native coin | STT |
 | Quote currency | USDso — `0x9c32F3827A1a99f0cf9B213de8b53eC3d57bb171` |
-| Game contract | `0xd71B17e27BCF2efFa2169e43fEA3504E5B615011` |
+| Game contract | `0xfF7356Fe8d8FBa6c14f44B434B4F384bA0aF6689` |
 
 Markets on testnet are WBTC, WETH and SOMI against USDso. USDC.e exists on
 mainnet only, so its card is greyed there and playable in practice.
