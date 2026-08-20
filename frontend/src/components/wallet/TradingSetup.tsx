@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useAtMenu, useExitPlan } from "@/hooks/useGameHud";
+import { useExitPlan } from "@/hooks/useGameHud";
 import { useSessionKey } from "@/hooks/useSessionKey";
 import { useTradingSession } from "@/hooks/useTradingSession";
 import "@/app/trading.css";
@@ -69,15 +69,11 @@ export default function TradingSetup({
     withdrawAll,
   } = useSessionKey(symbol);
   const { bridge, snapshot, refresh } = useTradingSession(symbol);
-  const atMenu = useAtMenu();
   const exits = useExitPlan();
   // Starts open. This panel used to be a door the player could ignore; it is
   // now the start button, so folding it away would hide the only way into a
   // run behind a control captioned "Open".
-  const [open, setOpen] = useState(true);
-  /* Set when the player pushes the sheet off the game; cleared when the panel
-     is deliberately reopened, so the control is never a one-way door. */
-  const [dismissed, setDismissed] = useState(false);
+  const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("2");
   const [roundTripCost, setRoundTripCost] = useState<number | null>(null);
   const [stopTerms, setStopTerms] = useState<{
@@ -232,50 +228,22 @@ export default function TradingSetup({
   const positionOpen = Boolean(snapshot?.open);
 
   /*
-   * Once the player is in the market this stops being a form and becomes a
-   * readout, so it folds down to a strip rather than holding a 212px rail
-   * open with an explainer of a step already taken.
-   */
-  const inTheMarket = positionOpen && overlayUntilOpen;
-  const expanded = inTheMarket ? open : open || holdsSomethingReal;
-
-  /*
-   * Can this player start a run right now? Trading authorised and money in the
-   * vault is the whole test - PLAY does the buying, staking what the vault
-   * holds.
-   */
-  /*
-   * Only when we KNOW the player cannot play yet.
+   * In the rail: a button. Everything else: in the modal it opens.
    *
-   * The vault reads null until the chain answers, and treating that as empty
-   * threw the sheet over the game on every load for as long as the read took.
-   * Unknown is not the same as empty, so it waits to be told.
+   * This panel is a place you go, not a thing that watches you. Every previous
+   * arrangement tried to be both - a readout that was also a form, folded and
+   * unfolded by rules about what was authorised and what was open - and each
+   * one ended up parked in a 212px column with a page of setup prose in it.
+   * The rail now holds one control, and the sheet appears only when the player
+   * asks for it.
    */
-  const needsSetup =
-    !positionOpen && (!authorized || (vault !== null && vault <= 0));
+  const expanded = overlayUntilOpen ? true : open;
+  const asOverlay = overlayUntilOpen && open;
 
-  /*
-   * Over the game only while it is a thing to act on.
-   *
-   * This sheet covers the whole window, PLAY included. It used to appear
-   * whenever no position was open - which is exactly the state a ready player
-   * is in - so the panel told them to press PLAY while standing on top of it,
-   * with no control to move it aside. It now appears only when they genuinely
-   * cannot play yet, or when they deliberately reopen it over a run, and it can
-   * always be dismissed.
-   */
-  const asOverlay =
-    overlayUntilOpen &&
-    !dismissed &&
-    ((atMenu && needsSetup) || (positionOpen && expanded));
-
+  // Buying in is the answer to whatever the player opened this for, so the
+  // sheet gets out of the way by itself once a position exists.
   useEffect(() => {
     if (snapshot?.open) setOpen(false);
-  }, [snapshot?.open]);
-
-  // A run ending is a new decision point, so the sheet is allowed back.
-  useEffect(() => {
-    if (!snapshot?.open) setDismissed(false);
   }, [snapshot?.open]);
 
   const panel = (
@@ -301,56 +269,11 @@ export default function TradingSetup({
           className="rc-btn rc-btn--primary"
           aria-expanded={expanded}
           aria-controls="trading-panel-body"
-          onClick={() => {
-            // Closing the sheet means "get off the game", not "fold to a stub
-            // that is still covering it".
-            if (asOverlay) setDismissed(true);
-            else setOpen((o) => !o);
-          }}
+          onClick={() => setOpen((o) => !o)}
         >
-          {asOverlay
-            ? "Close"
-            : expanded
-              ? "Close"
-              : inTheMarket
-                ? "Open panel"
-                : "Open"}
+          Close
         </button>
       </div>
-
-      {inTheMarket && !expanded ? (
-        <div className="rc-panel ts-strip">
-          <div className="ts-strip-row">
-            <span className="rc-pixel ts-strip-label">POSITION</span>
-            <span className="rc-mono ts-strip-value">
-              {snapshot!.stake.toFixed(2)} USDso
-            </span>
-          </div>
-          <div className="ts-strip-row">
-            <span className="rc-pixel ts-strip-label">P&amp;L</span>
-            <span
-              className={`rc-mono ts-strip-value${
-                snapshot!.pnl < 0 ? " ts-strip-value--loss" : " ts-strip-value--gain"
-              }`}
-            >
-              {snapshot!.pnl >= 0 ? "+" : ""}
-              {snapshot!.pnl.toFixed(2)} ({snapshot!.pnlPct.toFixed(1)}%)
-            </span>
-          </div>
-          <div className="ts-strip-row">
-            <span className="rc-pixel ts-strip-label">FLOOR</span>
-            <span className="rc-mono ts-strip-value">
-              {exits.floorPct ? `-${exits.floorPct}%` : "off"}
-            </span>
-          </div>
-          <div className="ts-strip-row">
-            <span className="rc-pixel ts-strip-label">TARGET</span>
-            <span className="rc-mono ts-strip-value">
-              {exits.targetPct ? `+${exits.targetPct}%` : "off"}
-            </span>
-          </div>
-        </div>
-      ) : null}
 
       {expanded ? (
         <div id="trading-panel-body" className="rc-panel ts-panel">
@@ -641,6 +564,21 @@ export default function TradingSetup({
 
                 {snapshot?.open ? (
                   <div className="ts-stop">
+                    {/* The exits chosen on the menu. They were shown in the
+                        folded rail readout, and that readout is gone - so
+                        without this the two prices that can sell your position
+                        are stated nowhere on the screen. */}
+                    <p className="ts-note">
+                      Selling itself at{" "}
+                      <span className="rc-mono">
+                        {exits.floorPct ? `-${exits.floorPct}%` : "no floor"}
+                      </span>{" "}
+                      and{" "}
+                      <span className="rc-mono">
+                        {exits.targetPct ? `+${exits.targetPct}%` : "no target"}
+                      </span>
+                      , watched by this page while the run is on screen.
+                    </p>
                     <button
                       onClick={handleSellBack}
                       disabled={sellBusy}
@@ -705,21 +643,57 @@ export default function TradingSetup({
     </section>
   );
 
-  if (!asOverlay) return panel;
+  if (!overlayUntilOpen) return panel;
+
+  if (!asOverlay) {
+    /*
+     * The whole of the rail. One button, labelled with the only thing worth
+     * knowing at a glance: whether trading is on and whether money is at work.
+     */
+    return (
+      <div className="ts-rail-slot">
+        <button
+          type="button"
+          className="rc-btn rc-btn--primary ts-btn-full"
+          onClick={() => setOpen(true)}
+        >
+          {positionOpen
+            ? "POSITION OPEN"
+            : authorized
+              ? "WALLET & VAULT"
+              : "SET UP TRADING"}
+        </button>
+        {/* One line, because nothing else on the screen shows this now: the
+            readout that used to sit over the canvas is gone, and the rest of
+            the panel is behind the button. */}
+        {positionOpen && snapshot ? (
+          <p className="ts-rail-hint rc-mono">
+            {snapshot.stake.toFixed(2)} USDso{" "}
+            <span className={snapshot.pnl < 0 ? "gc-loss" : "gc-gain"}>
+              {snapshot.pnl >= 0 ? "+" : ""}
+              {snapshot.pnlPct.toFixed(1)}%
+            </span>
+          </p>
+        ) : authorized && vault !== null ? (
+          <p className="ts-rail-hint rc-mono">{vault.toFixed(2)} USDso ready</p>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div
       className="ts-overlay"
       role="dialog"
       aria-modal="false"
-      aria-label={positionOpen ? "Your position" : "Set up trading to play"}
+      aria-label={positionOpen ? "Your position" : "Trading and vault"}
     >
       <div className="ts-overlay-inner">
         <p className="rc-pixel ts-overlay-lead">
           {positionOpen
             ? "YOUR POSITION"
             : authorized
-              ? "FUND THE VAULT TO PLAY"
+              ? "WALLET & VAULT"
               : "SET UP TRADING TO PLAY"}
         </p>
         {panel}

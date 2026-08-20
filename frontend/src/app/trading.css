@@ -345,37 +345,24 @@
   width: 100%;
 }
 
-/* --- Folded position readout ---------------------------------------------- */
+/* --- The rail slot -------------------------------------------------------- */
 /*
- * What the rail shows once the player is in the market. The full panel is an
- * explainer of a step already taken, so holding a 212px column open with it
- * costs game screen for nothing; this keeps the three numbers worth glancing
- * at and puts the rest one click away.
+ * All the rail holds now: one control, and one line of state under it.
+ *
+ * Everything else lives in the sheet that button opens. The panel spent three
+ * rounds of this parked in the rail with a page of setup prose in it, because
+ * it was trying to be a readout and a form at once in a 212px column.
  */
-.ts-strip {
+.ts-rail-slot {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px;
+  gap: 8px;
 }
 
-.ts-strip-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.ts-strip-label {
-  font-size: 9px;
+.ts-rail-hint {
+  margin: 0;
+  font-size: 11px;
   color: var(--rc-text-faint);
-}
-
-.ts-strip-value {
-  font-size: 12px;
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }
-
-/* This palette has no green: gain is yellow everywhere else on the cabinet. */
-.ts-strip-value--gain { color: var(--rc-yellow); }
-.ts-strip-value--loss { color: var(--rc-red); }
