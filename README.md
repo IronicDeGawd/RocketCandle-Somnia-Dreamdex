@@ -1,246 +1,170 @@
-# 🚀 Rocket Candle
+# Rocket Candle
 
-A Web3 physics-based puzzle game built on Somnia Network. Blast through candlestick barriers, destroy enemies, and earn RocketFUEL tokens in this engaging blockchain gaming experience!
+A way into an on-chain order book that happens to be a game.
 
-[![Deploy](https://img.shields.io/badge/Deploy-Vercel-black)](https://rocketcandle-git-main-pixeldotdevs-projects.vercel.app) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Somnia](https://img.shields.io/badge/Blockchain-Somnia-purple)](https://somnia.network)
+You pick a trading pair, buy a real position in it on [DreamDEX](https://dreamdex.io),
+and that purchase is how a run starts. The pair's price history becomes the
+terrain you shoot across, how much you hold decides how far your rocket reaches,
+and the position sells back when the run ends. It is aimed at people for whom a
+normal exchange screen is a wall of numbers with no way in.
 
-## 🎮 Game Overview
+Built on [Somnia](https://somnia.network). Live on Shannon testnet.
 
-**Rocket Candle** is a physics-based puzzle game where players:
+## How a run actually works
 
-- Launch rockets to eliminate enemies and obstacles
-- Navigate through market-inspired candlestick barriers
-- Earn RocketFUEL tokens based on performance and efficiency
-- Compete on weekly leaderboards for rewards
-- Complete 7 levels with increasing difficulty
+1. **Set trading up, once.** Your wallet authorises a throwaway key held in this
+   browser to place and cancel orders for you, and moves working capital into
+   the exchange's vault. The key can never withdraw. This is what buys you a run
+   with no wallet popup between shots.
+2. **Pick a pair.** Four markets, each with its own character — a stablecoin is
+   flat, gentle ground; Bitcoin is jagged cliffs. Nothing invents a difficulty
+   setting: the market supplies it. A market you cannot afford is greyed, with
+   what it needs against what that pool holds.
+3. **Choose your stake and your exits.** How much of the vault to put in, and
+   the two prices that end the trade for you: a floor if it falls, a target if it
+   rises. Either sells; neither ends your run.
+4. **Play.** The level is that pair's real price history. Live order flow shakes
+   the field while you aim.
+5. **The run ends and the position sells back.** Your score is countersigned by
+   the attestation service and submitted, carrying the stake and the profit or
+   loss with it — so a run and its trade are one record.
 
-## 🎯 How to Play
+`E` ejects your position at any time without ending the game. `F` adds to it,
+which grows the blast. The money decision and the game decision are deliberately
+kept apart.
 
-### Game Controls
+## What is in here
 
-- **W/S Keys**: Adjust rocket launch angle (up/down)
-- **A/D Keys**: Adjust rocket launch power (decrease/increase)
-- **SPACE**: Launch the rocket
-- **Alternative**: Use the on-screen sliders for angle and power adjustment
+| Path | What it is |
+|---|---|
+| `frontend/` | Next.js 15 app, Phaser 3 game, and the trading library |
+| `hardhat-contracts/` | `RocketCandleGame.sol` — the WICK token, scores, weekly pot |
+| `server/` | The attestation service: countersigns finished runs, records volume |
 
-### Game Elements
-
-- **🎯 Enemy Characters**: Your primary targets - destroy all enemies to complete the level
-- **🕯️ Candlestick Barriers**: Green and red barriers that block your path - navigate around them
-- **🧱 Destructible Blocks**: Brown blocks that can be destroyed by rocket impact
-- **🚀 Launcher**: Your rocket launcher - aim carefully as you have limited attempts per level
-
-### Objective
-
-- Eliminate all enemy characters in each level
-- Use physics and strategy to navigate around or through obstacles
-- Complete all 7 levels to maximize your FUEL token rewards
-- Achieve high scores to climb the leaderboard
-
-### Scoring System
-
-- **Enemy Elimination**: Points for each enemy destroyed
-- **Level Completion**: Bonus points for finishing levels
-- **Efficiency Bonus**: Extra points for completing levels with fewer attempts
-- **Blockchain Rewards**: Earn RocketFUEL tokens based on your performance
-
-## 🏗️ Architecture
-
-### Smart Contracts (`/hardhat-contracts` & `/rocketcandle-contracts`)
-
-- **RocketCandleGame.sol**: Unified contract combining ERC-20 token (RocketFUEL) and complete game logic
-- **Deployment**: Hardhat & Foundry setups for Somnia Network
-- **Testing**: Comprehensive test suite for anti-cheat mechanisms
-
-### Frontend (`/frontend`)
-
-- **Framework**: Next.js with TypeScript
-- **Game Engine**: Phaser.js for 2D physics and graphics
-- **Styling**: Tailwind CSS for responsive design
-- **Blockchain**: ethers.js integration with Somnia Network
-
-## 🚀 Quick Start
-
-### 1. Smart Contract Deployment
-
-```bash
-# Using Hardhat
-cd hardhat-contracts
-npm install
-cp .env.example .env
-# Edit .env with your private key
-
-# Deploy to Somnia testnet
-npm run deploy:somnia
-
-# OR using Foundry
-cd rocketcandle-contracts
-forge install
-forge build
-forge script script/DeployRocketCandle.s.sol \
-  --rpc-url https://dream-rpc.somnia.network \
-  --private-key <YOUR_PRIVATE_KEY> \
-  --broadcast
-```
-
-### 2. Frontend Setup
-
-```bash
-cd frontend
-npm install
-
-# Configure environment
-echo "NEXT_PUBLIC_GAME_CONTRACT_ADDRESS=your_deployed_address" > .env.local
-
-# Start development server
-npm run dev
-```
-
-### 3. Access the Game
-
-- Visit: [rocketcandle-git-main-pixeldotdevs-projects.vercel.app](https://rocketcandle-git-main-pixeldotdevs-projects.vercel.app)
-- Connect your Somnia-compatible wallet
-- Ensure you have STT tokens for gas fees
-- Start playing and earning RocketFUEL tokens!
-
-## � Game Features
-
-### Core Gameplay
-
-- **Physics Controls**: W/S for angle, A/D for power, SPACE to launch
-- **Progressive Difficulty**: 7 levels with increasing complexity
-- **Strategic Elements**: Navigate candlestick barriers and destructible blocks
-- **Target System**: Eliminate all enemies to complete levels
-
-### Blockchain Integration
-
-- **Score Validation**: Anti-cheat algorithms prevent impossible scores
-- **Weekly Leaderboards**: Automatic ranking and competition cycles
-- **Token Economy**: Earn RocketFUEL tokens based on performance metrics
-- **Revive System**: Spend 50 RocketFUEL tokens to continue failed games
-
-## � Technical Stack
-
-### Blockchain
-
-- **Network**: Somnia Shannon Testnet (Chain ID: 50312)
-- **RPC**: `https://dream-rpc.somnia.network`
-- **Explorer**: `https://shannon-explorer.somnia.network`
-- **Framework**: Hardhat + Foundry with OpenZeppelin contracts
+The game runs inside a React page rather than owning the screen: score, level
+and enemies are HTML above the frame, the trading panel is a sheet the player
+opens, and the canvas keeps the play field.
 
 ### Frontend
 
-- **Runtime**: Next.js with TypeScript
-- **Game Engine**: Phaser.js for 2D physics and rendering
-- **Blockchain**: ethers.js for Web3 interactions
-- **Styling**: Tailwind CSS with responsive design
+- **Next.js 15 / React 19**, TypeScript
+- **Phaser 3** for the physics and the canvas art, which is drawn at runtime
+  rather than loaded — see `src/utils/DesignTextures.js`
+- **wagmi 2 + viem** for the chain. Not ethers
+- **Hand-written CSS** against a design system in `src/app/design-system.css`.
+  No Tailwind
+- **`node:test`** for the trading maths — 49 tests, no test framework installed
 
-## � Project Structure
+### The trading library
 
-```
-rocket-candle/
-├── contracts/                 # Smart contracts & blockchain
-│   ├── contracts/RocketCandleGame.sol
-│   ├── scripts/deploy.js
-│   └── hardhat.config.js
-├── frontend/                  # Next.js game application
-│   ├── app/                   # App Router pages
-│   ├── components/            # React components
-│   ├── utils/blockchain.ts    # Web3 integration
-│   └── public/                # Game assets
-│       ├── assets/            # Sprites and images
-│       ├── blocks/            # Candlestick barriers
-│       └── enemies/           # Enemy sprites
-├── rocketcandle-contracts/    # Foundry contracts (alternative)
-├── LICENSE
-└── README.md
-```
+`frontend/src/lib/` is the part worth reading. It talks to DreamDEX directly:
 
-## 🔐 Security Features
+- `orders.ts` — tick and lot alignment, order placement, top of book
+- `position.ts` — opening, adding to, marking and closing a position
+- `minimums.ts` — the smallest buy each market will accept, priced the way an
+  order really pays
+- `stopOrder.ts` — a stop resting on the exchange, which survives a closed tab
+- `tradingBridge.ts` — what the game is allowed to do with money
+- `sessionKey.ts` / `hooks/useSessionKey.ts` — the browser key and its authority
 
-### Smart Contract Security
-
-- **Input Validation**: Comprehensive parameter checking
-- **Anti-Cheat Logic**: Statistical analysis of submitted scores
-- **Gas Optimization**: Efficient data structures and algorithms
-- **Emergency Controls**: Pause mechanisms for critical issues
-
-### Frontend Security
-
-- **Wallet Integration**: Secure connection to MetaMask and Web3 wallets
-- **Network Validation**: Automatic Somnia network switching
-- **Error Handling**: Graceful handling of blockchain failures
-- **Data Sanitization**: Input validation for all user data
-
-## � Deployment Guide
-
-### Prerequisites
-
-- Node.js 18.0+
-- MetaMask or compatible Web3 wallet
-- Somnia testnet STT tokens (from faucet)
-
-### Contract Deployment
-
-1. Configure `.env` with deployer private key
-2. Fund deployer wallet with STT tokens
-3. Run `npm run deploy:somnia`
-4. Save contract address for frontend configuration
-
-### Frontend Deployment
-
-1. Update `NEXT_PUBLIC_GAME_CONTRACT_ADDRESS` in environment
-2. Deploy to Vercel: `vercel deploy`
-3. Test full game functionality
-
-## � Testing
-
-### Smart Contract Tests
+## Running it
 
 ```bash
+# 1. The contract
 cd hardhat-contracts
-npm test                    # Run full test suite
-npm run test:coverage      # Generate coverage report
+npm install
+cp .env.example .env          # PRIVATE_KEY and RUN_ATTESTOR_ADDRESS
+npm run deploy:somnia         # prints the address and verifies the source
+
+# 2. The attestation service
+cd ../server
+npm install
+cp .env.example .env          # JWT_SECRET, ATTESTATION_PRIVATE_KEY, GAME_CONTRACT_ADDRESS
+node index.js                 # :4000
+
+# 3. The game
+cd ../frontend
+npm install
+echo "NEXT_PUBLIC_GAME_CONTRACT_ADDRESS=<the address>" > .env.local
+npm run dev                   # :3000
 ```
 
-### Frontend Testing
+`npm test` in `frontend` needs **Node 22 or newer** — it runs TypeScript
+directly through type stripping, which Node 20 refuses.
 
-```bash
-cd frontend
-npm run dev                # Local development
-npm run build              # Production build test
-npm run lint               # Code quality check
-```
+`/practice` plays without a wallet: a two-level taster on real price history,
+buying nothing.
 
-## 🤝 Contributing
+## The network
 
-1. Fork the repository
-2. Create feature branch: `git checkout -b feature/new-feature`
-3. Run tests: `npm test`
-4. Commit changes: `git commit -m 'Add new feature'`
-5. Push branch: `git push origin feature/new-feature`
-6. Submit pull request
+| | |
+|---|---|
+| Chain | Somnia Shannon testnet, id **50312** |
+| RPC | `https://dream-rpc.somnia.network` |
+| Explorer | `https://shannon-explorer.somnia.network` |
+| Native coin | STT |
+| Quote currency | USDso — `0x9c32F3827A1a99f0cf9B213de8b53eC3d57bb171` |
+| Game contract | `0xd71B17e27BCF2efFa2169e43fEA3504E5B615011` |
 
-## 📄 License
+Markets on testnet are WBTC, WETH and SOMI against USDso. USDC.e exists on
+mainnet only, so its card is greyed there and playable in practice.
 
-MIT License - see LICENSE file for details
+Two things that catch people out. The native side of a pair has no token
+contract, so it is keyed by a sentinel address rather than `address(0)`. And the
+exchange vault is **per pool** — a balance read is a call on the pool, so money
+deposited for one pair cannot buy another.
 
-## 🔗 Links
+## Anti-cheat
 
-- **Live Game**: [rocketcandle-git-main-pixeldotdevs-projects.vercel.app](https://rocketcandle-git-main-pixeldotdevs-projects.vercel.app)
-- **Documentation**: [Somnia Network Docs](https://docs.somnia.network)
-- **Block Explorer**: [Shannon Explorer](https://shannon-explorer.somnia.network)
-- **Testnet Faucet**: [Somnia Faucet](https://testnet.somnia.network/)
+A player used to be able to report any score. Now a finished run has to be
+countersigned by the attestation service before the contract will take it, each
+signature spends a nonce so a run cannot be claimed twice, and the signed
+payload includes the trade — because a profit a player merely asserts is a
+profit they can choose.
 
-## 🆘 Support
+The signing key can be rotated with `setRunAttestor`, which invalidates every
+forged signature at once.
 
-For issues and questions:
+## WICK
 
-1. Check existing GitHub issues
-2. Review documentation
-3. Join Somnia Discord community
-4. Submit new issue with detailed description
+WICK is points, not a promise of a fixed amount of money. A fixed rate — so many
+points always buy so much — is a well with no bottom: anybody earning faster
+than planned drains it, and the only way out is to break the rate, which players
+never forgive.
 
----
+So a week's pot is shared out instead. Your points that week divided by
+everybody's points that week is your slice. A busy week pays a bigger pot, a
+quiet one pays less, and the pot can never pay out more than went into it — so
+somebody farming points mostly dilutes themselves. The pot is held in USDso and
+the only way out of the contract is a player claiming their own share.
 
-**Ready to blast off?** Connect your wallet and start earning RocketFUEL tokens today! 🚀✨
+## Building on Somnia
+
+Somnia does not price gas the way Ethereum does, and the differences are
+multiples rather than adjustments:
+
+| | Somnia | Ethereum |
+|---|---|---|
+| Deployed bytecode, per byte | **3,125** | 200 |
+| Touching a slot not recently accessed | **1,000,000** | 2,100 |
+| Writing a fresh slot | 200,000 | 20,000 |
+
+Two consequences shaped this contract. **Size is the deploy bill** — 89% of the
+44.4M gas this deployment cost was the bytecode. And **a loop over storage is
+not cheap**: the weekly leaderboard used to be scanned linearly inside the write
+path, which would have charged the thousandth player of a week about 6 SOMI to
+submit one score. It is keyed by player now, and costs the same whoever you are.
+
+Figures measured, not quoted, against
+[`somnia-primitives`](https://github.com/IronicDeGawd/somnia-primitives).
+
+## Deploying
+
+Runs on EC2 behind nginx: `rocket-candle-web` serves the built Next app and
+`rocket-candle-attest` runs the attestation service. Sync `frontend/src`,
+rebuild on the box, restart both. The 2GB swap is load-bearing — the build peaks
+near the instance's memory.
+
+## Licence
+
+MIT.
