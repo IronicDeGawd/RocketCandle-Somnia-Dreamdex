@@ -323,15 +323,24 @@ export class RunSetupScene extends Phaser.Scene {
     this.commitmentText.setColor(enough ? "#F6F740" : "#E94F37");
 
     // Derived, never edited directly - the opening stake is what actually
-    // buys the position; the rest stays behind as headroom for `F`.
-    const { openingStake } = deriveOpeningStake(
+    // buys the position; the reserve stays behind as headroom for `F`. A
+    // commitment too small to hold back anything without breaking the
+    // market's minimum gets a zero reserve - the whole commitment opens the
+    // position, and there is no "rest" to promise. Saying "headroom for F"
+    // regardless was a lie in that case: `F` would then have nothing to draw
+    // from and fail on the first press.
+    const { openingStake, reserve } = deriveOpeningStake(
       this.commitment,
       min,
       EXPOSURE_STEP
     );
     this.openingStake = openingStake;
     this.openingStakeText.setText(
-      enough ? `opens at ${openingStake.toFixed(2)} USDso · rest is headroom for F` : ""
+      !enough
+        ? ""
+        : reserve > 0
+          ? `opens at ${openingStake.toFixed(2)} USDso · ${reserve.toFixed(2)} held back as headroom for F`
+          : `opens at ${openingStake.toFixed(2)} USDso · no headroom left for F`
     );
 
     // The market's own floor, stated rather than discovered when the exchange

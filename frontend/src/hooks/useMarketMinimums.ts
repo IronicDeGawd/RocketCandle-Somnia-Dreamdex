@@ -26,9 +26,6 @@ import {
 
 export type MarketMinimums = Record<string, MarketMinimum>;
 
-/** USDso sitting in each market's own vault, keyed by market id. */
-export type MarketVaults = Record<string, number>;
-
 /**
  * Both sides of a market's own vault, keyed by market id.
  *
@@ -36,7 +33,9 @@ export type MarketVaults = Record<string, number>;
  * a minimum priced in USDso. Recovery (see `lib/recovery.ts`) has to catch a
  * partial fill's leftover base tokens too, so both sides are read and kept
  * here - and, per `vault-as-transit.md` §5, this pair is read for recovery
- * ONLY. Nothing gates on it any more; that job moved to `walletUsdso`.
+ * ONLY. Nothing gates on it any more; that job moved to `walletUsdso`, which
+ * is also what the picker and the navbar read now instead of a per-pool
+ * vault balance.
  */
 export type MarketVaultSides = Record<string, { quote: number; base: number }>;
 
@@ -56,7 +55,6 @@ export function useMarketMinimums(owner?: `0x${string}` | null) {
    */
   const latestRef = useRef<{
     minimums: MarketMinimums;
-    vaults: MarketVaults;
     vaultSides: MarketVaultSides;
     walletUsdso: number | undefined;
   } | null>(null);
@@ -71,7 +69,6 @@ export function useMarketMinimums(owner?: `0x${string}` | null) {
       if (!latest) return;
 
       window.rocketCandleGame.marketMinimums = latest.minimums;
-      window.rocketCandleGame.marketVaults = latest.vaults;
       window.rocketCandleGame.marketVaultSides = latest.vaultSides;
       window.rocketCandleGame.walletUsdso = latest.walletUsdso;
       window.dispatchEvent(new CustomEvent("rc-hud"));
@@ -170,14 +167,6 @@ export function useMarketMinimums(owner?: `0x${string}` | null) {
                 Boolean(e[1])
             )
             .map(([id, min]) => [id, min])
-        ),
-        vaults: Object.fromEntries(
-          readable
-            .filter(
-              (e): e is readonly [string, MarketMinimum | null, number, number | null] =>
-                typeof e[2] === "number"
-            )
-            .map(([id, , vault]) => [id, vault])
         ),
         vaultSides: Object.fromEntries(
           readable

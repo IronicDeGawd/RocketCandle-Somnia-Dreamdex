@@ -77,66 +77,6 @@
   color: var(--rc-text);
 }
 
-/* --- Stake field ------------------------------------------------------------ */
-
-.ts-field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.ts-field-label {
-  font-size: 9px;
-  color: var(--rc-text-faint);
-}
-
-.ts-stake-well {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.ts-stake-input {
-  flex: 1;
-  min-width: 0;
-  background: transparent;
-  border: none;
-  color: var(--rc-text);
-  font-family: var(--rc-font-mono);
-  font-size: 18px;
-  letter-spacing: 0.04em;
-}
-
-/*
- * The ring lives on the well, not the bare input.
- *
- * The input itself has no border and a transparent background - it is a
- * caret sitting inside `.rc-well`'s box - so a ring drawn on the input alone
- * would float with nothing to sit against. `outline: none` here only turns
- * off the browser's default box on the input; the global
- * `input:focus-visible` ring in design-system.css never reaches this
- * element anyway, because `.ts-stake-input:focus` (0,2,0) beats
- * `input:focus-visible` (0,1,1) on specificity regardless of source order -
- * that mismatch is what silenced it. The rule below restores a visible ring
- * on the well itself for keyboard users.
- */
-.ts-stake-input:focus {
-  outline: none;
-}
-
-.ts-stake-well:focus-within {
-  outline: 3px solid var(--rc-yellow);
-  outline-offset: 3px;
-}
-
-.ts-stake-unit {
-  font-family: var(--rc-font-mono);
-  font-size: 13px;
-  color: var(--rc-text-faint);
-  flex: none;
-}
-
 /* --- Fact list -------------------------------------------------------------- */
 
 .ts-facts {
@@ -174,55 +114,6 @@
   height: 8px;
   background: var(--rc-blue);
   border: 2px solid var(--rc-ink);
-}
-
-/* --- Setup progress ----------------------------------------------------- */
-
-.ts-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-family: var(--rc-font-mono);
-  font-size: 12px;
-}
-
-.ts-step {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--rc-text-faint);
-}
-
-.ts-step-dot {
-  flex: none;
-  width: 10px;
-  height: 10px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-}
-
-.ts-step--done { color: var(--rc-text-soft); }
-.ts-step--done .ts-step-dot { background: var(--rc-yellow); border-color: var(--rc-ink); }
-
-.ts-step--current { color: var(--rc-white); }
-.ts-step--current .ts-step-dot {
-  background: var(--rc-red);
-  border-color: var(--rc-ink);
-}
-
-.ts-progress-track {
-  border: var(--rc-border);
-  background: var(--rc-well);
-  height: 14px;
-  display: flex;
-}
-
-.ts-progress-fill {
-  background: var(--rc-yellow);
-}
-
-.ts-progress-label {
-  align-self: center;
-  color: var(--rc-text-faint);
 }
 
 /* --- Ready / stop copy -------------------------------------------------- */
@@ -361,9 +252,17 @@
 
 .ts-overlay-inner {
   width: 100%;
-  /* Wider than the rail column it grew out of: at 460px the same content ran
-     past the bottom of a laptop screen. Trading width for height. */
-  max-width: 760px;
+  /*
+   * Back to 460px. The 760px width and the two-column grid that used to sit
+   * below this rule existed for content this phase deletes - the stake
+   * field, the deposit progress list and the add-to-vault field. What is
+   * left (a blurb, the return notice, one fact list or one status line, and
+   * a couple of buttons) is a handful of short rows; a single narrow column
+   * reads better than two half-width ones for that little content. Re-check
+   * this in a browser if the rebuilt panel ever grows past a laptop screen
+   * again - a green build has never once proven this screen right.
+   */
+  max-width: 460px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -404,32 +303,4 @@
   color: var(--rc-text-faint);
   text-align: center;
   font-variant-numeric: tabular-nums;
-}
-
-/*
- * Two columns once the sheet is wide enough for them.
- *
- * The step list and the setup fields are what make this panel tall; side by
- * side they roughly halve it, which is the difference between fitting on a
- * laptop screen and not. Below this width it stays a single column, because
- * two 300px columns are worse than one readable one.
- */
-@media (min-width: 720px) {
-  .ts-root--overlay .ts-body {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    align-items: start;
-  }
-
-  /* Full-width rows: prose, progress and anything that must not be halved. */
-  .ts-root--overlay .ts-body > .ts-blurb,
-  .ts-root--overlay .ts-body > .ts-progress-track,
-  .ts-root--overlay .ts-body > .ts-note,
-  .ts-root--overlay .ts-body > .ts-error,
-  .ts-root--overlay .ts-body > .ts-error-box,
-  .ts-root--overlay .ts-body > .ts-actions,
-  .ts-root--overlay .ts-body > .ts-stop,
-  .ts-root--overlay .ts-body > .ts-ready {
-    grid-column: 1 / -1;
-  }
 }

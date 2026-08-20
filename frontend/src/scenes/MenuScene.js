@@ -516,7 +516,7 @@ export class MenuScene extends Phaser.Scene {
   /**
    * Why can this market not be played right now?
    *
-   * Silent about anything it does not know. An unread vault or an unread
+   * Silent about anything it does not know. An unread wallet or an unread
    * minimum must not lock a player out of a market they can perfectly well
    * afford - being wrongly refused is worse than being refused by the exchange.
    *

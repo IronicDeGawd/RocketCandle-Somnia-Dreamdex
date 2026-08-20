@@ -2,24 +2,15 @@
 
 import { useSyncExternalStore } from "react";
 
-import { DEFAULT_MARKET_ID, GAME_MARKETS } from "@/data/DreamdexMarketFeed.js";
-
 /**
- * The vault for the market actually in play.
+ * What the wallet holds in USDso, right now.
  *
- * There is no single "the vault": a balance read is a call on the pool, so each
- * market keeps its own and money deposited for one pair cannot buy another.
- * This reports the one the player is about to spend, which is the only figure
- * that answers "can I play right now".
+ * `vault-as-transit.md` §6: every gate compares against the WALLET balance
+ * now, not a per-pool vault - "does your wallet hold enough" is one number a
+ * player already knows, in place of "does this specific pool hold enough".
+ * This used to read a market's own vault (`marketVaults`), which is why the
+ * per-pool naming existed here; that reasoning is gone along with the read.
  */
-
-export interface MarketVaultView {
-  marketId: string;
-  /** The nickname the picker shows, e.g. "SOMI". */
-  label: string;
-  /** USDso in that market's vault, or null before it has been read. */
-  usdso: number | null;
-}
 
 function subscribe(onChange: () => void) {
   if (typeof window === "undefined") return () => {};
@@ -29,28 +20,14 @@ function subscribe(onChange: () => void) {
 
 function read(): string {
   if (typeof window === "undefined") return "";
-  const game = window.rocketCandleGame;
-  const id = game?.selectedMarket?.id ?? DEFAULT_MARKET_ID;
-  const held = game?.marketVaults?.[id];
+  const held = window.rocketCandleGame?.walletUsdso;
   // Serialised so useSyncExternalStore compares by value; returning a fresh
   // object every read would loop forever.
-  return `${id}|${typeof held === "number" ? held : ""}`;
+  return typeof held === "number" ? String(held) : "";
 }
 
-export function useMarketVault(): MarketVaultView {
+/** USDso in the connected wallet, or null before it has been read even once. */
+export function useWalletUsdso(): number | null {
   const packed = useSyncExternalStore(subscribe, read, () => "");
-
-  const [id, held] = packed.split("|");
-  const marketId = id || DEFAULT_MARKET_ID;
-  const market = GAME_MARKETS.find(
-    (m: { id: string; label: string }) => m.id === marketId
-  );
-
-  return {
-    marketId,
-    // The picker's own nickname, minus the ticker in brackets - the bar has no
-    // room for "Stablecoin (USDC.e)".
-    label: (market?.label ?? marketId).replace(/\s*\(.*\)$/, ""),
-    usdso: held === "" || held === undefined ? null : Number(held),
-  };
+  return packed === "" ? null : Number(packed);
 }

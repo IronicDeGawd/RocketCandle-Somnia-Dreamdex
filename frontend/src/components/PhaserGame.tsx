@@ -183,17 +183,9 @@ declare global {
        */
       marketMinimums?: import("@/hooks/useMarketMinimums").MarketMinimums;
       /**
-       * USDso in each market's OWN vault, keyed by market id.
-       *
-       * The vault is per pool - money deposited for one pair cannot be spent on
-       * another - so there is no single "the vault" to compare against.
-       */
-      marketVaults?: import("@/hooks/useMarketMinimums").MarketVaults;
-      /**
        * Both sides of each market's own vault, kept for the recovery path
        * only (see `lib/recovery.ts` and `vault-as-transit.md` §5) - nothing
-       * gates on this. `marketVaults` above stays quote-only and is what
-       * `MenuScene.js` and `useMarketVault.ts` still read.
+       * gates on this. Every gate reads `walletUsdso` below instead.
        */
       marketVaultSides?: import("@/hooks/useMarketMinimums").MarketVaultSides;
       /**
