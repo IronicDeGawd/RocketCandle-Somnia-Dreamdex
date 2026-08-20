@@ -108,8 +108,26 @@
   letter-spacing: 0.04em;
 }
 
+/*
+ * The ring lives on the well, not the bare input.
+ *
+ * The input itself has no border and a transparent background - it is a
+ * caret sitting inside `.rc-well`'s box - so a ring drawn on the input alone
+ * would float with nothing to sit against. `outline: none` here only turns
+ * off the browser's default box on the input; the global
+ * `input:focus-visible` ring in design-system.css never reaches this
+ * element anyway, because `.ts-stake-input:focus` (0,2,0) beats
+ * `input:focus-visible` (0,1,1) on specificity regardless of source order -
+ * that mismatch is what silenced it. The rule below restores a visible ring
+ * on the well itself for keyboard users.
+ */
 .ts-stake-input:focus {
   outline: none;
+}
+
+.ts-stake-well:focus-within {
+  outline: 3px solid var(--rc-yellow);
+  outline-offset: 3px;
 }
 
 .ts-stake-unit {
@@ -246,7 +264,18 @@
 
 /* --- Error --------------------------------------------------------------- */
 
-.ts-error-box {
+/*
+ * One treatment for every failure in this panel, not two.
+ *
+ * This used to be split: the boxed, red-left-border look for the first setup
+ * failure only, and a quiet one-line red sentence for every later one -
+ * funding the key, adding to the vault, resting or lifting a stop, selling
+ * back, the sweep warning, the general error. Those later failures are the
+ * ones that move real money, so the quiet treatment had severity backwards.
+ * There is now exactly one way an error looks, wherever it appears.
+ */
+.ts-error {
+  margin: 0;
   border-left: 6px solid var(--rc-red);
   background: var(--rc-well);
   padding: 12px 14px;
@@ -254,12 +283,6 @@
   font-size: 13px;
   line-height: 1.5;
   color: var(--rc-white);
-}
-
-.ts-error {
-  margin: 0;
-  font-size: 13px;
-  color: var(--rc-red);
 }
 
 /* --- Buttons -------------------------------------------------------------- */

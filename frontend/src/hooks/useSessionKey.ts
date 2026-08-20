@@ -35,6 +35,7 @@ import {
   MINIMUM_BASE_FEE_PER_GAS,
 } from "@/lib/orders";
 import { sweepAmount } from "@/lib/gasSweep";
+import { mapWalletError } from "@/lib/walletErrors";
 
 /**
  * Setting up trading without popups, and taking it back.
@@ -486,8 +487,9 @@ export function useSessionKey(symbol?: string): UseSessionKey {
         await refreshAuthorization(meta.pool, key.address);
         setStep("ready");
       } catch (e) {
+        console.error("Failed to set up trading:", e);
         setStep("idle");
-        setError((e as Error).message?.split("\n")[0] ?? "Setup failed");
+        setError(mapWalletError(e).message);
       }
     },
     [
@@ -532,8 +534,9 @@ export function useSessionKey(symbol?: string): UseSessionKey {
       await sendGas(signer, key.address);
       setStep("ready");
     } catch (e) {
+      console.error("Failed to fuel the session key:", e);
       setStep("idle");
-      setError((e as Error).message?.split("\n")[0] ?? "Fuelling failed");
+      setError(mapWalletError(e).message);
     }
   }, [walletClient, publicClient, address, chainId, switchChainAsync, sendGas]);
 
@@ -598,8 +601,7 @@ export function useSessionKey(symbol?: string): UseSessionKey {
         } catch (e) {
           console.error("Sweep before revoke failed", e);
           setSweepWarning(
-            (e as Error).message?.split("\n")[0] ??
-              "Could not return the key's leftover gas - retry later"
+            `Could not return the key's leftover gas: ${mapWalletError(e).message} You can retry later.`
           );
         }
 
@@ -631,8 +633,9 @@ export function useSessionKey(symbol?: string): UseSessionKey {
         setSessionKey(null);
         setStep("idle");
       } catch (e) {
+        console.error("Failed to revoke the session key:", e);
         setStep("ready");
-        setError((e as Error).message?.split("\n")[0] ?? "Revoke failed");
+        setError(mapWalletError(e).message);
       }
     },
     [
@@ -667,7 +670,8 @@ export function useSessionKey(symbol?: string): UseSessionKey {
           args: [USDSO_ADDRESS, parseUnits(usdsoAmount, meta.quoteDecimals)],
         });
       } catch (e) {
-        setError((e as Error).message?.split("\n")[0] ?? "Withdraw failed");
+        console.error("Failed to withdraw from the vault:", e);
+        setError(mapWalletError(e).message);
       }
     },
     [walletClient, publicClient, address, market]

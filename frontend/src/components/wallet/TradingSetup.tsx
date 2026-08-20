@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useExitPlan } from "@/hooks/useGameHud";
 import { useSessionKey } from "@/hooks/useSessionKey";
 import { useTradingSession } from "@/hooks/useTradingSession";
+import { mapWalletError } from "@/lib/walletErrors";
 import "@/app/trading.css";
 
 /**
@@ -73,7 +74,7 @@ export default function TradingSetup({
   } = useSessionKey(symbol);
   const { bridge, snapshot, refresh } = useTradingSession(symbol);
   const exits = useExitPlan();
-  // Starts open. This panel used to be a door the player could ignore; it is
+  // Starts closed. This panel used to be a door the player could ignore; it is
   // now the start button, so folding it away would hide the only way into a
   // run behind a control captioned "Open".
   const [open, setOpen] = useState(false);
@@ -89,6 +90,8 @@ export default function TradingSetup({
   const [sellBusy, setSellBusy] = useState(false);
   const [sellError, setSellError] = useState<string | null>(null);
   const [vault, setVault] = useState<number | null>(null);
+  const [vaultError, setVaultError] = useState<string | null>(null);
+  const [vaultRetryTick, setVaultRetryTick] = useState(0);
 
   /** How far the position may fall before it sells itself. */
   const FLOOR_DROP_PCT = 10;
@@ -143,7 +146,8 @@ export default function TradingSetup({
       setStopResting(Boolean(armed));
       if (!armed) setStopError("There is no open position to protect yet.");
     } catch (e) {
-      setStopError((e as Error).message ?? "Could not rest the stop");
+      console.error("Failed to rest stop:", e);
+      setStopError(mapWalletError(e).message);
     } finally {
       setStopBusy(false);
     }
@@ -158,6 +162,12 @@ export default function TradingSetup({
       const lifted = await bridge.liftStop();
       if (lifted) setStopResting(false);
       else setStopError("The stop could not be lifted — try again.");
+    } catch (e) {
+      // A failed lift must never look like a successful one: `stopResting`
+      // stays true, so the player keeps seeing "a stop is resting" rather
+      // than being told, wrongly, that their floor is gone.
+      console.error("Failed to lift stop:", e);
+      setStopError(mapWalletError(e).message);
     } finally {
       setStopBusy(false);
     }
@@ -170,19 +180,61 @@ export default function TradingSetup({
     let cancelled = false;
     if (!bridge || !authorized) return;
 
-    bridge.vaultUsdso().then((n) => {
-      if (!cancelled) setVault(n);
-    }).catch(() => {});
+    bridge
+      .vaultUsdso()
+      .then((n) => {
+        if (!cancelled) {
+          setVault(n);
+          setVaultError(null);
+        }
+      })
+      .catch((e) => {
+        // Leave `vault` as null rather than guessing zero - a failed read
+        // and an empty vault must never look the same to the player.
+        console.error("Failed to read vault balance:", e);
+        if (!cancelled) setVaultError(mapWalletError(e).message);
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [bridge, authorized, snapshot]);
+  }, [bridge, authorized, snapshot?.open, vaultRetryTick]);
 
   const handleEnable = useCallback(async () => {
     await enable(symbol, amount);
     await refresh();
+    // A top-up to an already-authorised vault changes neither `authorized`
+    // nor `snapshot?.open`, so the vault-read effect above would otherwise
+    // never see it and `vault` would go stale. Bumping the same tick the
+    // retry button uses forces one honest re-read; on a failed deposit the
+    // balance simply comes back unchanged, so this never misleads.
+    setVaultRetryTick((t) => t + 1);
   }, [enable, refresh, symbol, amount]);
+
+  /**
+   * Withdraw whatever is actually in the vault, then re-read it.
+   *
+   * `withdrawAll` already reports a failed transaction through the hook's
+   * own `error`. What it cannot report is a re-read that fails afterwards -
+   * that used to throw silently, leaving the withdraw button still offering
+   * money that may or may not have already left.
+   */
+  const handleWithdraw = useCallback(async () => {
+    await withdrawAll(symbol, String(vault ?? 0));
+    try {
+      const left = await bridge?.vaultUsdso();
+      if (typeof left === "number") {
+        setVault(left);
+        setVaultError(null);
+      }
+      await refresh();
+    } catch (e) {
+      console.error("Failed to re-read vault balance after withdraw:", e);
+      setVaultError(
+        `Withdraw sent, but the vault balance could not be re-read - ${mapWalletError(e).message}`
+      );
+    }
+  }, [withdrawAll, symbol, vault, bridge, refresh]);
 
   /**
    * Sell the holding back to USDso, at any time.
@@ -202,7 +254,8 @@ export default function TradingSetup({
       if (!result) setSellError("There was nothing open to sell.");
       await refresh();
     } catch (e) {
-      setSellError((e as Error).message ?? "Could not sell the position back");
+      console.error("Failed to sell back position:", e);
+      setSellError(mapWalletError(e).message);
     } finally {
       setSellBusy(false);
     }
@@ -365,7 +418,9 @@ export default function TradingSetup({
                     </div>
                   </>
                 ) : error ? (
-                  <div className="ts-error-box">{error}</div>
+                  <div className="ts-error" role="alert">
+                    {error}
+                  </div>
                 ) : (
                   <ul className="ts-facts">
                     {/* One fact, because only one of them changes whether a
@@ -444,7 +499,11 @@ export default function TradingSetup({
                         ? STEP_LABELS[step] ?? "Working..."
                         : "Fund the key's order fees"}
                     </button>
-                    {error ? <p className="ts-error">{error}</p> : null}
+                    {error ? (
+                      <p className="ts-error" role="alert">
+                        {error}
+                      </p>
+                    ) : null}
                   </div>
                 ) : !snapshot?.open ? (
                   /*
@@ -458,15 +517,32 @@ export default function TradingSetup({
                    * is never short of anything.
                    */
                   <div className="ts-stop">
-                    <p className="ts-ready">
-                      The vault holds{" "}
-                      <span className="rc-mono">
-                        {vault !== null ? vault.toFixed(2) : "…"} USDso
-                      </span>
-                      {vault && vault > 0
-                        ? ", ready to play with."
-                        : ". Add some to play."}
-                    </p>
+                    {vault !== null ? (
+                      <p className="ts-ready">
+                        The vault holds{" "}
+                        <span className="rc-mono">{vault.toFixed(2)} USDso</span>
+                        {vault > 0 ? ", ready to play with." : ". Add some to play."}
+                      </p>
+                    ) : vaultError ? (
+                      <>
+                        <p className="ts-error" role="alert">
+                          Could not read the vault balance - {vaultError} This
+                          is not the same as an empty vault; try again before
+                          assuming there is nothing there.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setVaultRetryTick((t) => t + 1)}
+                          className="rc-btn ts-btn-full"
+                        >
+                          Retry reading the vault
+                        </button>
+                      </>
+                    ) : (
+                      <p className="ts-ready">
+                        The vault holds <span className="rc-mono">… USDso</span>
+                      </p>
+                    )}
                     <p className="ts-note">
                       Press PLAY on the cabinet to buy into {symbol} and start a
                       run, staking whatever is in the vault - so your rocket is
@@ -499,7 +575,11 @@ export default function TradingSetup({
                         ? STEP_LABELS[step] ?? "Working..."
                         : `Add ${amount || "0"} USDso`}
                     </button>
-                    {error ? <p className="ts-error">{error}</p> : null}
+                    {error ? (
+                      <p className="ts-error" role="alert">
+                        {error}
+                      </p>
+                    ) : null}
                   </div>
                 ) : hasOpenStop ? (
                   <div className="ts-stop">
@@ -556,7 +636,9 @@ export default function TradingSetup({
                       </>
                     )}
                     {stopError ? (
-                      <p className="ts-error">{stopError}</p>
+                      <p className="ts-error" role="alert">
+                        {stopError}
+                      </p>
                     ) : null}
                   </div>
                 ) : (
@@ -598,7 +680,11 @@ export default function TradingSetup({
                       whatever it is worth now. A run does this for you when it
                       ends; this is the way out when you are not playing.
                     </p>
-                    {sellError ? <p className="ts-error">{sellError}</p> : null}
+                    {sellError ? (
+                      <p className="ts-error" role="alert">
+                        {sellError}
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -607,14 +693,7 @@ export default function TradingSetup({
                     // Withdraw what is actually there, not what the stake
                     // field happens to say - those differ the moment a
                     // position is opened or a deposit fails.
-                    onClick={async () => {
-                      await withdrawAll(symbol, String(vault ?? 0));
-                      // Nothing else re-reads it, so the button went on
-                      // offering money that had already left.
-                      const left = await bridge?.vaultUsdso();
-                      if (typeof left === "number") setVault(left);
-                      await refresh();
-                    }}
+                    onClick={handleWithdraw}
                     disabled={busy || !vault}
                     className="rc-btn"
                   >
@@ -637,8 +716,20 @@ export default function TradingSetup({
                   </button>
                 </div>
 
+                {/* The deposit-form branch above already shows this when a
+                    position is not open; once one is, that branch is not
+                    rendered, so the withdraw button's own row is the only
+                    place left to say why the balance looks stuck. */}
+                {vaultError && snapshot?.open ? (
+                  <p className="ts-error" role="alert">
+                    {vaultError}
+                  </p>
+                ) : null}
+
                 {sweepWarning ? (
-                  <p className="ts-error">{sweepWarning}</p>
+                  <p className="ts-error" role="status" aria-live="polite">
+                    {sweepWarning}
+                  </p>
                 ) : null}
 
                 <p className="ts-note">
@@ -647,7 +738,11 @@ export default function TradingSetup({
                   it.
                 </p>
 
-                {error ? <p className="ts-error">{error}</p> : null}
+                {error ? (
+                  <p className="ts-error" role="alert">
+                    {error}
+                  </p>
+                ) : null}
               </>
             )}
           </div>
