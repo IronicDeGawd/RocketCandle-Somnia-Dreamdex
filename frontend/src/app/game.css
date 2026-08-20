@@ -149,8 +149,10 @@
 }
 
 .gc-level-pip--future {
+  /* The border is decorative structure, not copy - left as its own value
+     rather than forced into the text vocabulary; see phase notes. */
   border-color: rgba(255, 255, 255, 0.22);
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--rc-text-faint);
 }
 
 /* --- Attempt pips ----------------------------------------------------- */
@@ -422,7 +424,7 @@
 .gc-rail-stats {
   margin: 0;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--rc-text-soft);
   line-height: 1.6;
 }
 
@@ -672,7 +674,7 @@
 
 .gc-market-pair {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--rc-text-faint);
 }
 
 .gc-market-price {
@@ -684,7 +686,7 @@
 /* Feed dropped. The line is still true, so it stays; the price is what has
    stopped being current, so only the price dims. */
 .gc-market-price--stale {
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--rc-text-stale);
 }
 
 .gc-market-well {
@@ -718,7 +720,7 @@
   justify-content: space-between;
   gap: 16px;
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--rc-text-faint);
 }
 
 .gc-market-legend {

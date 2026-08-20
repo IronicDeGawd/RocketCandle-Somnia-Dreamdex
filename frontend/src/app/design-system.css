@@ -42,6 +42,10 @@
   --rc-text: #ffffff;
   --rc-text-soft: rgba(255, 255, 255, 0.7);
   --rc-text-faint: rgba(255, 255, 255, 0.5);
+  /* Data that was live and has gone stale - the feed dropped, so the number
+     on screen is no longer current. Dimmer than --rc-text-faint on purpose:
+     this has to read as "distrust this" rather than merely "secondary". */
+  --rc-text-stale: rgba(255, 255, 255, 0.35);
 
   /* --- The surface rule -------------------------------------------------- */
 

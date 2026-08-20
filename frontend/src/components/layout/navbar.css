@@ -86,14 +86,18 @@
 }
 
 .nb-link:disabled {
-  opacity: 0.4;
+  /* Matches the disabled opacity every other control in the language uses
+     (.rc-btn, .gc-rail-btn, .gc-launch-btn) rather than its own number. Not
+     a --rc-text-* token: opacity here dims the whole control, and the base
+     text underneath is already --rc-text-soft. */
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 /* Needs a wallet. Dimmed like the design's unavailable keycap, but still
    clickable - clicking opens the connect prompt rather than doing nothing. */
 .nb-link--locked {
-  opacity: 0.4;
+  opacity: 0.45;
 }
 
 /* Doubled class on purpose. `.nb-link:hover:not(:disabled)` is more specific
@@ -101,7 +105,9 @@
    text and yellow underline as an available one - promising a page it was not
    going to open. Blue says "this will ask you for something first". */
 .nb-link.nb-link--locked:hover {
-  opacity: 0.75;
+  /* Same fraction as --rc-text-soft's alpha: hovering a locked link should
+     read exactly as legible as any other secondary copy, not brighter. */
+  opacity: 0.7;
   color: var(--rc-white);
   border-bottom-color: var(--rc-blue);
 }
@@ -266,12 +272,12 @@
 }
 
 .nb-mobile-link:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 .nb-mobile-link--locked {
-  opacity: 0.4;
+  opacity: 0.45;
 }
 
 .nb-mobile-link:focus-visible {
