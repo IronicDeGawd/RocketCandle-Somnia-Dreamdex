@@ -196,6 +196,25 @@ export function createTradingClients(
   };
 }
 
+/**
+ * Clients for reading only.
+ *
+ * The minimum buy a market accepts has to be known before a player has a
+ * session key - it decides which markets they may even pick - so it cannot go
+ * through createTradingClients, which needs one. Nothing here can sign.
+ */
+export function createReadClients(): TradingClients {
+  const transport = http(somniaNetwork.rpcUrls.default.http[0]);
+
+  return {
+    publicClient: createPublicClient({ chain: somniaNetwork, transport }),
+    // Reads never touch either of these; a caller that tries will fail loudly
+    // rather than quietly sending something unsigned.
+    walletClient: null as never,
+    operator: "0x0000000000000000000000000000000000000000",
+  };
+}
+
 export interface TopOfBook {
   bestBid: number | null;
   bestAsk: number | null;

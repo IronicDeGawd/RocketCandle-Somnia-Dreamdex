@@ -19,8 +19,14 @@ import {
  * whole point: there is no score to fake, only a price that moved.
  */
 
-/** How far to cross the touch so a taker order actually fills. */
-const CROSS_BPS = 20;
+/**
+ * How far to cross the touch so a taker order actually fills.
+ *
+ * Exported because the smallest buy a market will accept depends on it: the
+ * price an order really pays is this crossed price snapped to a tick, and the
+ * minimum stake is that price times the market's minimum quantity.
+ */
+export const CROSS_BPS = 20;
 
 export interface Position {
   symbol: string;

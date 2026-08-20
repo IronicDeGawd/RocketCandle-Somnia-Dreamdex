@@ -169,6 +169,13 @@ declare global {
        * own source for this was a global that never existed.
        */
       playerStats?: import("@/lib/blockchain").PlayerStats;
+      /**
+       * The smallest buy each market accepts, in USDso, keyed by market id.
+       *
+       * Set in the token being bought rather than in money, so it depends on
+       * the token's price - a market can be unaffordable with a funded vault.
+       */
+      marketMinimums?: import("@/hooks/useMarketMinimums").MarketMinimums;
       /** The exits chosen on the menu, which GameScene enforces. */
       exitPlan?: import("@/hooks/useGameHud").ExitPlan;
     };

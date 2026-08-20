@@ -26,8 +26,15 @@ const MONO_FONT = '"Geist Mono", monospace';
 
 const SHADOW_OFFSET = 5;
 
-/** Below this a buy is not worth making, and the exchange may refuse it. */
-const MIN_STAKE = 0.5;
+/**
+ * Fallback floor, used only until the market's own minimum is known.
+ *
+ * Every spot market states its smallest trade in the token being bought, so the
+ * real floor is that quantity at the current price and differs per market by
+ * orders of magnitude. A flat figure here refused stakes the exchange would
+ * have taken, and accepted stakes it would have refused.
+ */
+const FALLBACK_MIN_STAKE = 0.5;
 
 /** What the stake steps by when the player nudges it. */
 const STAKE_STEP = 0.5;
@@ -261,11 +268,19 @@ export class RunSetupScene extends Phaser.Scene {
     this.refreshStake();
   }
 
+  /** The smallest stake this market will actually accept. */
+  minStake() {
+    const min = window.rocketCandleGame?.marketMinimums?.[this.marketId];
+    return min ? min.safeUsdso : FALLBACK_MIN_STAKE;
+  }
+
   stepStake(delta) {
     if (this.vault === null || this.buyingIn) return;
 
     const next = Math.round((this.stake + delta) * 100) / 100;
-    // Never more than is there, and never below what the exchange will take.
+    // Never more than is there. Below the market's minimum is allowed to be
+    // shown - in red, with the figure - rather than silently clamped, so the
+    // player can see what the market wants of them.
     this.stake = Math.max(0, Math.min(this.vault, next));
     this.refreshStake();
     this.publishPlan();
@@ -283,13 +298,23 @@ export class RunSetupScene extends Phaser.Scene {
       return;
     }
 
-    this.stakeText.setText(`${this.stake.toFixed(2)} USDso`);
-    this.stakeText.setColor(this.stake >= MIN_STAKE ? "#F6F740" : "#E94F37");
+    const min = this.minStake();
+    const enough = this.stake >= min;
 
+    this.stakeText.setText(`${this.stake.toFixed(2)} USDso`);
+    this.stakeText.setColor(enough ? "#F6F740" : "#E94F37");
+
+    // The market's own floor, stated rather than discovered when the exchange
+    // refuses the order.
     this.vaultNote.setText(
-      this.vault > 0
-        ? `of ${this.vault.toFixed(2)} USDso in your vault`
-        : "your vault is empty - add some from the panel on the right"
+      this.vault <= 0
+        ? "your vault is empty - add some from the panel on the right"
+        : enough
+          ? `of ${this.vault.toFixed(2)} USDso in your vault · min ${min.toFixed(2)}`
+          : `this market needs at least ${min.toFixed(2)} USDso`
+    );
+    this.vaultNote.setColor(
+      enough ? "rgba(255,255,255,0.55)" : "rgba(233,79,55,0.85)"
     );
   }
 
@@ -357,9 +382,11 @@ export class RunSetupScene extends Phaser.Scene {
       return;
     }
 
-    if (this.stake < MIN_STAKE) {
+    const min = this.minStake();
+    if (this.stake < min) {
       this.say(
-        `stake at least ${MIN_STAKE} USDso - your vault holds ${this.vault.toFixed(2)}`,
+        `${this.market?.symbol ?? "this market"} needs at least ` +
+          `${min.toFixed(2)} USDso - your vault holds ${this.vault.toFixed(2)}`,
         "#E94F37"
       );
       return;

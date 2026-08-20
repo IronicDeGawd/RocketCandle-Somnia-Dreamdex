@@ -30,6 +30,7 @@ import NotificationSystem, {
   useNotifications,
 } from "@/components/ui/NotificationSystem";
 import { useSelectedMarket } from "@/hooks/useGameHud";
+import { useMarketMinimums } from "@/hooks/useMarketMinimums";
 import { DEFAULT_MARKET_SYMBOL } from "@/data/DreamdexMarketFeed.js";
 
 // Dynamically import PhaserGame to avoid SSR issues
@@ -91,6 +92,10 @@ export default function GamePage() {
   // another's token. Falls back to the market the menu itself defaults to,
   // for the moment before it has published a choice.
   const selectedMarket = useSelectedMarket();
+
+  // What each market's smallest possible buy costs, for the picker to grey out
+  // the ones this vault cannot reach.
+  useMarketMinimums();
   const tradingSymbol = selectedMarket?.symbol ?? DEFAULT_MARKET_SYMBOL;
   const [gameStartTime, setGameStartTime] = useState<number>(0);
   const [isSubmittingScore, setIsSubmittingScore] = useState(false);

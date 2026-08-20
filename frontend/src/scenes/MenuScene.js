@@ -76,6 +76,10 @@ export class MenuScene extends Phaser.Scene {
     // created with, and practice was offered a NEXT it does not have.
     this.refreshPlayButton();
 
+    // The vault decides which markets are reachable at all.
+    this.vaultUsdso = null;
+    this.refreshVault();
+
     // Create instructions
     this.add
       .text(600, 528, "AIM WITH SLIDERS · LAUNCH TO FIRE", {
@@ -118,7 +122,9 @@ export class MenuScene extends Phaser.Scene {
 
     this.publishSelectedMarket();
 
-    const onChange = () => this.refreshPlayButton();
+    // A minimum arriving, or a deposit landing, changes what is reachable.
+    // refreshVault repaints and relabels once it has an answer.
+    const onChange = () => this.refreshVault();
     window.addEventListener("rc-hud", onChange);
 
     this.events.once("shutdown", () =>
@@ -349,14 +355,80 @@ export class MenuScene extends Phaser.Scene {
    * Redraw the chips so the chosen one is obvious.
    */
   paintMarketChips() {
-    this.marketChips.forEach(({ market, chip, blurb }) => {
+    this.marketChips.forEach(({ market, chip, label, blurb }) => {
       const chosen = market.id === this.selectedMarketId;
+      const short = this.shortfallFor(market.id);
+
+      /*
+       * A market this vault cannot reach is shown as unreachable.
+       *
+       * Each spot market sets its smallest trade in the token being bought, so
+       * the money needed to reach it depends on that token's price - Bitcoin's
+       * minimum can be worth more than a whole vault while Somnia's is small
+       * change. Left as normal, the player picks it, presses through, and the
+       * exchange refuses the order with nothing having warned them.
+       */
+      if (short) {
+        chip.setFillStyle(INK);
+        chip.setStrokeStyle(3, WELL);
+        label.setColor("rgba(255,255,255,0.35)");
+        blurb.setColor("rgba(233,79,55,0.75)");
+        blurb.setText(
+          `needs ${short.needs.toFixed(2)} USDso · vault has ${short.has.toFixed(2)}`
+        );
+        return;
+      }
+
       chip.setFillStyle(chosen ? RED : WELL);
       chip.setStrokeStyle(chosen ? 4 : 3, INK);
+      label.setColor("#FFFFFF");
+      blurb.setText(market.blurb);
       blurb.setColor(
         chosen ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.55)"
       );
     });
+  }
+
+  /**
+   * Is this market out of reach, and by how much?
+   *
+   * Silent about anything it does not know. An unread vault or an unread
+   * minimum must not grey out a market the player can perfectly well afford -
+   * being wrongly locked out is worse than being refused by the exchange.
+   *
+   * @returns what is needed and what is held, or null when it is reachable
+   */
+  shortfallFor(marketId) {
+    if (typeof window === "undefined") return null;
+
+    const game = window.rocketCandleGame;
+    // Practice buys nothing, so no minimum applies.
+    if (game?.practiceMode) return null;
+
+    const min = game?.marketMinimums?.[marketId];
+    if (!min) return null;
+    if (this.vaultUsdso === null || this.vaultUsdso === undefined) return null;
+
+    if (this.vaultUsdso >= min.safeUsdso) return null;
+    return { needs: min.safeUsdso, has: this.vaultUsdso };
+  }
+
+  /** What the player has to trade with, read from the exchange vault. */
+  async refreshVault() {
+    const trading = window.rocketCandleGame?.trading;
+    if (!trading) {
+      this.vaultUsdso = null;
+      return;
+    }
+
+    try {
+      this.vaultUsdso = await trading.vaultUsdso();
+    } catch {
+      this.vaultUsdso = null;
+    }
+
+    this.paintMarketChips();
+    this.refreshPlayButton();
   }
 
   /**
@@ -411,11 +483,19 @@ export class MenuScene extends Phaser.Scene {
       return;
     }
 
+    const short = this.shortfallFor(marketId);
+    if (short) {
+      this.saySomething(
+        `that market needs ${short.needs.toFixed(2)} usdso - your vault has ${short.has.toFixed(2)}`,
+        "#E94F37"
+      );
+      return;
+    }
+
     this.selectedMarketId = marketId;
     this.registry.set("selectedMarketId", marketId);
     this.publishSelectedMarket();
     this.paintMarketChips();
-    // The exits step names the pair, so it has to follow the choice.
 
     this.registry.set("marketRunLoading", true);
 
@@ -507,6 +587,15 @@ export class MenuScene extends Phaser.Scene {
     // Moving on mid-fetch would carry the previous market's terrain forward,
     // which is worse than making the player wait a moment.
     if (this.marketLoading) return;
+
+    const short = this.shortfallFor(this.selectedMarketId);
+    if (short) {
+      this.saySomething(
+        `this market needs ${short.needs.toFixed(2)} usdso - add funds or pick a cheaper one`,
+        "#E94F37"
+      );
+      return;
+    }
 
     this.sound.stopAll();
 
