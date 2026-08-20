@@ -37,8 +37,17 @@ const SHADOW_OFFSET = 5;
  */
 const FALLBACK_MIN_STAKE = 0.5;
 
-/** What the commitment steps by when the player nudges it. */
-const COMMITMENT_STEP = 0.5;
+/**
+ * The smallest nudge, for a small wallet.
+ *
+ * A flat step does not survive a range: 0.5 against a 50 USDso balance is a
+ * hundred presses to cross, which reads as a control that does nothing. The
+ * step is a share of what the player actually holds, with this as the floor.
+ */
+const MIN_COMMITMENT_STEP = 0.1;
+
+/** A tenth of the wallet per press, so ten presses cross the whole range. */
+const COMMITMENT_STEP_FRACTION = 0.1;
 
 /*
  * What the two exits may be set to. Zero means off - a player who wants to
@@ -72,6 +81,15 @@ export class RunSetupScene extends Phaser.Scene {
      */
     this.walletBalance = null;
     this.commitment = null;
+    /*
+     * Whether the player has set the amount themselves.
+     *
+     * Without this, every wallet re-read stamped the commitment back to the
+     * full balance - so the nudges appeared dead: pressing minus lowered it and
+     * the next republish (a poll, or the plan this screen publishes itself) put
+     * it straight back. A chosen number must survive a refresh.
+     */
+    this.commitmentChosen = false;
     this.openingStake = 0;
 
     this.exitPlan = {
@@ -151,8 +169,8 @@ export class RunSetupScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    this.nudge(600 - 250, y - 8, "-", () => this.stepCommitment(-COMMITMENT_STEP));
-    this.nudge(600 + 250, y - 8, "+", () => this.stepCommitment(COMMITMENT_STEP));
+    this.nudge(600 - 250, y - 8, "-", () => this.stepCommitment(-this.commitmentStep()));
+    this.nudge(600 + 250, y - 8, "+", () => this.stepCommitment(this.commitmentStep()));
 
     // Read-only: the opening stake is derived, never edited directly. Showing
     // it is what tells a player the rest of their commitment is headroom for
@@ -261,10 +279,10 @@ export class RunSetupScene extends Phaser.Scene {
     this.input.keyboard.on("keydown-SPACE", () => this.startRun());
     this.input.keyboard.on("keydown-ESC", () => this.goBack());
     this.input.keyboard.on("keydown-LEFT", () =>
-      this.stepCommitment(-COMMITMENT_STEP)
+      this.stepCommitment(-this.commitmentStep())
     );
     this.input.keyboard.on("keydown-RIGHT", () =>
-      this.stepCommitment(COMMITMENT_STEP)
+      this.stepCommitment(this.commitmentStep())
     );
   }
 
@@ -292,9 +310,17 @@ export class RunSetupScene extends Phaser.Scene {
     }
 
     this.walletBalance = held;
-    // Default to everything in there, which is what PLAY used to do without
-    // asking. The difference is that it can now be turned down.
-    this.commitment = held;
+
+    if (!this.commitmentChosen) {
+      // Default to everything in there, which is what PLAY used to do without
+      // asking. The difference is that it can now be turned down.
+      this.commitment = held;
+    } else {
+      // Their number, kept - only pulled down if the wallet can no longer
+      // cover it, which is exactly what happens after a deposit lands.
+      this.commitment = Math.min(this.commitment ?? held, held);
+    }
+
     this.refreshCommitment();
   }
 
@@ -302,6 +328,13 @@ export class RunSetupScene extends Phaser.Scene {
   minStake() {
     const min = window.rocketCandleGame?.marketMinimums?.[this.marketId];
     return min ? min.safeUsdso : FALLBACK_MIN_STAKE;
+  }
+
+  /** How much one press moves the commitment, scaled to what they hold. */
+  commitmentStep() {
+    const held = this.walletBalance ?? 0;
+    const share = Math.round(held * COMMITMENT_STEP_FRACTION * 100) / 100;
+    return Math.max(MIN_COMMITMENT_STEP, share);
   }
 
   stepCommitment(delta) {
@@ -312,6 +345,7 @@ export class RunSetupScene extends Phaser.Scene {
     // to be shown - in red, with the figure - rather than silently clamped,
     // so the player can see what the market wants of them.
     this.commitment = Math.max(0, Math.min(this.walletBalance, next));
+    this.commitmentChosen = true;
     this.refreshCommitment();
     this.publishPlan();
   }
