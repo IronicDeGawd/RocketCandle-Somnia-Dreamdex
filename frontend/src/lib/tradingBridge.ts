@@ -38,6 +38,27 @@ import {
 const RECOVERED_TX =
   "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
 
+/**
+ * A buy-in that could not complete, with the one fact that decides what a
+ * player must be told: whether the commitment ever left the wallet.
+ *
+ * The deposit is owner-signed and the buy is key-signed, so they cannot land
+ * as a single transaction - if the deposit lands and the buy then fails, the
+ * commitment is sitting at the exchange with no position open. That is a
+ * "your money is safe, go get it back" message, not a "the buy-in failed,
+ * nothing happened" one, and confusing the two is worse than either alone.
+ */
+export class BuyInError extends Error {
+  /** True once the commitment has actually reached the exchange. */
+  readonly fundsAtExchange: boolean;
+
+  constructor(message: string, fundsAtExchange: boolean) {
+    super(message);
+    this.name = "BuyInError";
+    this.fundsAtExchange = fundsAtExchange;
+  }
+}
+
 export interface TradingSnapshot {
   /** Is there a live position right now? */
   open: boolean;
@@ -58,12 +79,35 @@ export interface TradingBridge {
   /** Ready to trade: a funded vault and an authorised session key. */
   enabled: boolean;
   symbol: string;
-  /** Buy in. Resolves once the position is really open. */
-  open: (stakeUsdso: number) => Promise<TradingSnapshot | null>;
+  /**
+   * Buy in. Deposits the full commitment to the exchange (owner-signed, one
+   * prompt) and then opens at the derived opening stake (key-signed, no
+   * prompt) - two signers, so this is honestly two steps rather than one
+   * atomic transaction. Resolves once the position is really open.
+   *
+   * @param commitmentUsdso the whole amount this run is depositing, including
+   *   the headroom `F` will draw from
+   * @param openingStakeUsdso the part of the commitment that actually buys
+   *   the position - `deriveOpeningStake`'s result, not the commitment itself
+   */
+  open: (
+    commitmentUsdso: number,
+    openingStakeUsdso: number
+  ) => Promise<TradingSnapshot | null>;
   /** Add to the position. More exposure, more firepower, more risk. */
   addExposure: (extraUsdso: number) => Promise<TradingSnapshot | null>;
-  /** Sell back. Used both by ejecting and by finishing a run. */
-  close: () => Promise<{ pnl: number; proceeds: number } | null>;
+  /**
+   * Sell back. Used both by ejecting and by finishing a run. Sweeps the pool
+   * home on both sides afterwards - a partial fill can leave base tokens
+   * behind - but a sweep failure is reported alongside the result rather than
+   * thrown, so it never costs the caller the P&L it needs.
+   */
+  close: () => Promise<{
+    pnl: number;
+    proceeds: number;
+    swept: { quote: number; base: number } | null;
+    sweepError: string | null;
+  } | null>;
   /** Value the position without touching it. */
   snapshot: () => Promise<TradingSnapshot | null>;
   /** What a round trip will cost in spread, before committing. */
@@ -110,6 +154,16 @@ export interface TradingBridge {
    * unavailable - the session key is not allowed to arm one.
    */
   canRestStop: boolean;
+  /**
+   * Can a buy-in even be attempted right now?
+   *
+   * The vault used to be pre-funded, so opening a position never needed the
+   * player's own wallet. Now the commitment has to be deposited first, and
+   * that deposit is owner-signed - so without a wallet there is no route to
+   * fund a run at all. False when `ownerWallet` is missing, mirroring
+   * `canRestStop` above.
+   */
+  canBuyIn: boolean;
   /** What resting a stop costs up front, and how far it may slip when it fires. */
   stopTerms: () => Promise<{ deposit: number; slippageBps: number } | null>;
   /**
@@ -139,6 +193,20 @@ export interface BuildBridgeOptions {
    * one action that reaches for the real wallet.
    */
   ownerWallet?: WalletClient | null;
+  /**
+   * The owner-signed route into the exchange, injected rather than
+   * reimplemented here.
+   *
+   * `useSessionKey` already owns simulating, signing, and confirming an
+   * owner transaction correctly - including the network switch and the
+   * batched-prompt fallback - so the bridge calls back into that rather than
+   * duplicating it against a raw `ownerWallet`. Both are expected to be
+   * present together, since a caller that can sign one can sign the other;
+   * `canBuyIn` is still keyed off `ownerWallet` alone, matching `canRestStop`.
+   */
+  depositCommitment?: (amountUsdso: number) => Promise<void>;
+  /** Bring both sides of the pool home. See `useSessionKey.sweepHome`. */
+  sweepHome?: () => Promise<{ quote: number; base: number }>;
   onChange?: (snapshot: TradingSnapshot | null) => void;
 }
 
@@ -195,6 +263,8 @@ export function buildTradingBridge({
   market,
   owner,
   ownerWallet,
+  depositCommitment,
+  sweepHome,
   onChange,
 }: BuildBridgeOptions): TradingBridge {
   let position: Position | null = null;
@@ -235,6 +305,7 @@ export function buildTradingBridge({
   let lastRun: { stakeUsdso: number; pnlUsdso: number } | null = null;
 
   const canRestStop = Boolean(market.stopRegistry && ownerWallet);
+  const canBuyIn = Boolean(ownerWallet);
 
   /**
    * Take any resting stop off the exchange.
@@ -340,10 +411,48 @@ export function buildTradingBridge({
       });
     },
 
-    async open(stakeUsdso) {
+    async open(commitmentUsdso, openingStakeUsdso) {
       if (position) return null;
 
-      position = await openPosition(clients, market, owner, stakeUsdso);
+      if (!canBuyIn || !depositCommitment) {
+        throw new BuyInError(
+          "No wallet is available to fund this run",
+          false
+        );
+      }
+
+      try {
+        // Owner-signed: the commitment leaves the wallet before anything is
+        // bought. Nothing has been spent yet if this step itself fails, so
+        // this is wrapped separately from the buy below - a deposit that
+        // never lands must never be told apart as "funds are at the
+        // exchange" the way a landed deposit with a failed buy is.
+        await depositCommitment(commitmentUsdso);
+      } catch (e) {
+        throw new BuyInError(
+          `Could not deposit ${commitmentUsdso} USDso (${
+            e instanceof Error ? e.message : String(e)
+          }). Nothing left your wallet.`,
+          false
+        );
+      }
+
+      try {
+        // Key-signed, no prompt: buys only the derived opening stake, leaving
+        // the rest of the commitment behind in the pool as `F`'s headroom.
+        position = await openPosition(clients, market, owner, openingStakeUsdso);
+      } catch (e) {
+        // The deposit landed; the buy did not. The commitment is sitting at
+        // the exchange with no position open - recoverable, not lost, and the
+        // wrong words here would tell a player their money is gone.
+        throw new BuyInError(
+          `Deposited ${commitmentUsdso} USDso but the buy failed (${
+            e instanceof Error ? e.message : String(e)
+          }). That money is still at the exchange and can be returned.`,
+          true
+        );
+      }
+
       orderCount += 1;
       addVolume(position.costUsdso, position.openTxHash);
 
@@ -404,7 +513,31 @@ export function buildTradingBridge({
       position = null;
 
       publish(emptySnapshot(orderCount, volumeUsdso));
-      return { pnl: result.pnlUsdso, proceeds: result.proceedsUsdso };
+
+      /*
+       * Sweep home, both sides, but never at the cost of the P&L the caller
+       * needs to record. The score attestation carries stake and P&L from
+       * this exact result - throwing here over a sweep failure would throw
+       * that away along with the sweep, and the position is already gone by
+       * this point regardless.
+       */
+      let swept: { quote: number; base: number } | null = null;
+      let sweepError: string | null = null;
+      if (sweepHome) {
+        try {
+          swept = await sweepHome();
+        } catch (e) {
+          console.error("Failed to sweep the pool home:", e);
+          sweepError = e instanceof Error ? e.message : String(e);
+        }
+      }
+
+      return {
+        pnl: result.pnlUsdso,
+        proceeds: result.proceedsUsdso,
+        swept,
+        sweepError,
+      };
     },
 
     async snapshot() {
@@ -430,6 +563,7 @@ export function buildTradingBridge({
     },
 
     canRestStop,
+    canBuyIn,
 
     async stopTerms() {
       if (!market.stopRegistry) return null;

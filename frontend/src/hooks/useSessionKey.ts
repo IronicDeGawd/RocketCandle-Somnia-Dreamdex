@@ -22,7 +22,7 @@ import {
   fetchMarket,
   type MarketMeta,
 } from "@/lib/dreamdex";
-import { planSetupSteps, type Step } from "@/lib/setupSteps";
+import { planDepositSteps, planSetupSteps, type Step } from "@/lib/setupSteps";
 import {
   forgetSessionKey,
   getOrCreateSessionKey,
@@ -31,8 +31,10 @@ import {
 } from "@/lib/sessionKey";
 import {
   createTradingClients,
+  fromRaw,
   GAS_FLOOR_NATIVE_BUY,
   MINIMUM_BASE_FEE_PER_GAS,
+  TRADING_POOL_ABI,
 } from "@/lib/orders";
 import { sweepAmount } from "@/lib/gasSweep";
 import { mapWalletError } from "@/lib/walletErrors";
@@ -202,13 +204,30 @@ export interface UseSessionKey {
   fuelKey: () => Promise<void>;
   sweepKey: () => Promise<void>;
   /**
-   * Set up trading, and top the vault up later through the same path.
+   * Set up trading: the standing allowance, vault mode, and the key
+   * authorisation. No money moves here any more - a run's own buy-in deposits
+   * what it needs through `depositFor`.
    *
-   * Every step is read first and skipped when already done, so this is one
-   * transaction for a top-up and only as many as are genuinely missing for a
-   * first-time setup.
+   * Every step is read first and skipped when already done, so a re-run
+   * after the account is already set up costs no signature at all.
    */
-  enable: (symbol: string, usdsoAmount: string) => Promise<void>;
+  enable: (symbol: string) => Promise<void>;
+  /**
+   * Fund one run. Owner-signed, batched into a single wallet prompt with
+   * `runSteps` where the wallet supports it - approve-if-needed and deposit
+   * together, since setup's standing allowance may already cover it.
+   */
+  depositFor: (symbol: string, usdsoAmount: string) => Promise<void>;
+  /**
+   * Bring everything the pool holds home, on both sides, each decoded at its
+   * own decimals.
+   *
+   * A base-side sweep that goes unnoticed strands tokens at the exchange
+   * with nothing left in the app that knows to ask for them back - that
+   * exact bug cost 11 SOMI on this project already. Returns what was
+   * actually swept, so a caller can tell a player what came home.
+   */
+  sweepHome: (symbol: string) => Promise<{ quote: number; base: number }>;
   revoke: (symbol: string) => Promise<void>;
   withdrawAll: (symbol: string, usdsoAmount: string) => Promise<void>;
 }
@@ -357,7 +376,7 @@ export function useSessionKey(symbol?: string): UseSessionKey {
   }, [symbol, address, publicClient, refreshAuthorization, refreshKeyGas]);
 
   const enable = useCallback(
-    async (symbol: string, usdsoAmount: string) => {
+    async (symbol: string) => {
       if (!address) {
         setError("Connect a wallet first");
         return;
@@ -419,28 +438,6 @@ export function useSessionKey(symbol?: string): UseSessionKey {
         if (!key) throw new Error("No browser storage available");
         setSessionKey(key);
 
-        const amount = parseUnits(usdsoAmount, meta.quoteDecimals);
-
-        // Refuse before spending anything if the stake is not actually there.
-        // Cheaper to read a balance than to sign four transactions and fail on
-        // the third.
-        const walletBalance = (await publicClient.readContract({
-          address: USDSO_ADDRESS,
-          abi: ERC20_ABI,
-          functionName: "balanceOf",
-          args: [address],
-        })) as bigint;
-
-        if (walletBalance < amount) {
-          const held = Number(walletBalance) / 10 ** meta.quoteDecimals;
-          setStep("idle");
-          setError(
-            `This wallet holds ${held.toFixed(2)} USDso but the stake is ` +
-              `${usdsoAmount}. Lower the stake or top up.`
-          );
-          return;
-        }
-
         // Fees for the key's own orders, before it is asked to place any.
         // Its own transfer, and it checks the key's balance first.
         await sendGas(signer, key.address);
@@ -448,10 +445,10 @@ export function useSessionKey(symbol?: string): UseSessionKey {
         /*
          * Only what is actually missing.
          *
-         * All four of these used to be fired every single call, so topping the
-         * vault up cost four confirmations to do one thing - twice re-writing
-         * state the chain already recorded. Each is now read first, and a step
-         * already done contributes nothing to the prompt.
+         * These used to be fired every single call, so topping the vault up
+         * cost several confirmations to do one thing - re-writing state the
+         * chain already recorded. Each is now read first, and a step already
+         * done contributes nothing to the prompt.
          */
         const [vaultModeOn, allowance, alreadyAuthorized] = await Promise.all([
           publicClient.readContract({
@@ -473,15 +470,15 @@ export function useSessionKey(symbol?: string): UseSessionKey {
           pool: meta.pool,
           registry: operatorRegistryFor(chainId),
           operator: key.address,
-          amount,
           vaultModeOn,
           allowance,
           alreadyAuthorized,
         });
 
         // The step names double as the progress label, so the panel says what
-        // is happening rather than naming a step that was skipped.
-        setStep(steps.length > 1 ? "depositing" : "approving");
+        // is happening rather than naming a step that was skipped. No step
+        // here ever deposits any more, so "approving" covers all of them.
+        setStep(steps.length > 0 ? "approving" : "ready");
         await runSteps(publicClient, signer, address, steps);
 
         await refreshAuthorization(meta.pool, key.address);
@@ -501,6 +498,179 @@ export function useSessionKey(symbol?: string): UseSessionKey {
       refreshAuthorization,
       sendGas,
     ]
+  );
+
+  /**
+   * Fund one run. Owner-signed, because the deposit moves the player's own
+   * money - the session key can trade what is in the pool but can never put
+   * anything into it.
+   *
+   * Reads the live allowance rather than assuming setup's standing one is
+   * still enough, so a wallet that revoked or lowered it between runs still
+   * gets a correct plan instead of a deposit that reverts on its own
+   * allowance check.
+   */
+  const depositFor = useCallback(
+    async (symbol: string, usdsoAmount: string) => {
+      /*
+       * This moves the player's own money. A wallet that is missing, or a
+       * chain the config does not recognise, used to fall through here
+       * silently - `open()` then awaited a deposit that had resolved having
+       * done nothing, believed the commitment had reached the exchange, and
+       * told a player their money was "still at the exchange and can be
+       * returned" when it had in fact never left their wallet. Throwing is
+       * what lets that message stay true.
+       */
+      if (!publicClient || !address) {
+        throw new Error("Connect your wallet to fund this run");
+      }
+
+      setError(null);
+
+      // Owner-signed, same as enable() and fuelKey() - a wallet parked on
+      // another chain needs the same switch before it can sign a deposit.
+      let signer = walletClient;
+      if (chainId !== somniaNetwork.id || !signer) {
+        try {
+          setStep("switching-network");
+          await switchChainAsync({ chainId: somniaNetwork.id });
+          signer = await getWalletClient(wagmiConfig, {
+            chainId: somniaNetwork.id,
+          });
+        } catch {
+          setStep("ready");
+          const message = `Approve the switch to ${somniaNetwork.name} in your wallet, then try again`;
+          setError(message);
+          throw new Error(message);
+        }
+      }
+      if (!signer) {
+        setStep("ready");
+        const message = `Your wallet is not on ${somniaNetwork.name}`;
+        setError(message);
+        throw new Error(message);
+      }
+
+      try {
+        const meta = market ?? (await fetchMarket(symbol));
+        if (!meta) throw new Error(`Market ${symbol} not found`);
+
+        const amount = parseUnits(usdsoAmount, meta.quoteDecimals);
+
+        const allowance = (await publicClient.readContract({
+          address: USDSO_ADDRESS,
+          abi: ERC20_ABI,
+          functionName: "allowance",
+          args: [address, meta.pool],
+        })) as bigint;
+
+        const steps = planDepositSteps({ pool: meta.pool, amount, allowance });
+
+        setStep("depositing");
+        await runSteps(publicClient, signer, address, steps);
+        setStep("ready");
+      } catch (e) {
+        console.error("Failed to deposit for a run:", e);
+        setStep("ready");
+        setError(mapWalletError(e).message);
+        throw e;
+      }
+    },
+    [walletClient, publicClient, address, market, chainId, switchChainAsync]
+  );
+
+  /**
+   * Bring both sides of the pool home. Owner-signed, and reads the exact
+   * amount held on each side rather than a remembered figure - the exchange
+   * is the only source of truth for what is actually still there.
+   */
+  const sweepHome = useCallback(
+    async (symbol: string): Promise<{ quote: number; base: number }> => {
+      /*
+       * A sweep that was never attempted must never look like a sweep that
+       * ran and found nothing - `close()` records exactly the object this
+       * returns as what came home, so a silent {quote: 0, base: 0} here
+       * states the pool was checked and was empty, when in truth nothing
+       * left at the exchange was ever asked for. That is the same
+       * invisible-balance outcome an unswept base side already cost this
+       * project once.
+       */
+      if (!publicClient || !address) {
+        throw new Error("Connect your wallet to sweep the pool home");
+      }
+
+      // Owner-signed, same as enable() and fuelKey() - a wallet parked on
+      // another chain needs the same switch before it can sign a sweep.
+      let signer = walletClient;
+      if (chainId !== somniaNetwork.id || !signer) {
+        try {
+          setStep("switching-network");
+          await switchChainAsync({ chainId: somniaNetwork.id });
+          signer = await getWalletClient(wagmiConfig, {
+            chainId: somniaNetwork.id,
+          });
+        } catch {
+          setStep("ready");
+          throw new Error(
+            `Approve the switch to ${somniaNetwork.name} in your wallet, then try again`
+          );
+        }
+      }
+      if (!signer) {
+        setStep("ready");
+        throw new Error(`Your wallet is not on ${somniaNetwork.name}`);
+      }
+
+      const meta = market ?? (await fetchMarket(symbol));
+      if (!meta) throw new Error(`Market ${symbol} not found`);
+
+      const [quoteRaw, baseRaw] = await Promise.all([
+        publicClient.readContract({
+          address: meta.pool,
+          abi: TRADING_POOL_ABI,
+          functionName: "getWithdrawableBalance",
+          args: [address, USDSO_ADDRESS],
+        }) as Promise<bigint>,
+        publicClient.readContract({
+          address: meta.pool,
+          abi: TRADING_POOL_ABI,
+          functionName: "getWithdrawableBalance",
+          args: [address, meta.base],
+        }) as Promise<bigint>,
+      ]);
+
+      const steps: Step[] = [];
+      if (quoteRaw > 0n) {
+        steps.push({
+          label: "the quote-side sweep",
+          address: meta.pool,
+          abi: SPOT_POOL_ABI,
+          functionName: "withdraw",
+          args: [USDSO_ADDRESS, quoteRaw],
+        });
+      }
+      // The side a partial fill leaves behind - stranded for good if this is
+      // ever skipped, since nothing else in the app knows to ask for it.
+      if (baseRaw > 0n) {
+        steps.push({
+          label: "the base-side sweep",
+          address: meta.pool,
+          abi: SPOT_POOL_ABI,
+          functionName: "withdraw",
+          args: [meta.base, baseRaw],
+        });
+      }
+
+      if (steps.length > 0) {
+        await runSteps(publicClient, signer, address, steps);
+      }
+
+      return {
+        quote: fromRaw(quoteRaw, meta.quoteDecimals),
+        base: fromRaw(baseRaw, meta.baseDecimals),
+      };
+    },
+    [walletClient, publicClient, address, market, chainId, switchChainAsync]
   );
 
   /** Top up an already-authorised key that has spent its fees. */
@@ -711,6 +881,8 @@ export function useSessionKey(symbol?: string): UseSessionKey {
     fuelKey,
     sweepKey,
     enable,
+    depositFor,
+    sweepHome,
     revoke,
     withdrawAll,
   };

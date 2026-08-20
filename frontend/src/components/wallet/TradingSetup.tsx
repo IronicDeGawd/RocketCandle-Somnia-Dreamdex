@@ -201,15 +201,9 @@ export default function TradingSetup({
   }, [bridge, authorized, snapshot?.open, vaultRetryTick]);
 
   const handleEnable = useCallback(async () => {
-    await enable(symbol, amount);
+    await enable(symbol);
     await refresh();
-    // A top-up to an already-authorised vault changes neither `authorized`
-    // nor `snapshot?.open`, so the vault-read effect above would otherwise
-    // never see it and `vault` would go stale. Bumping the same tick the
-    // retry button uses forces one honest re-read; on a failed deposit the
-    // balance simply comes back unchanged, so this never misleads.
-    setVaultRetryTick((t) => t + 1);
-  }, [enable, refresh, symbol, amount]);
+  }, [enable, refresh, symbol]);
 
   /**
    * Withdraw whatever is actually in the vault, then re-read it.

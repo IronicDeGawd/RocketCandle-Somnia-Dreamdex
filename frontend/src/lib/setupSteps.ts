@@ -34,8 +34,6 @@ export interface SetupState {
   registry: `0x${string}`;
   /** The browser key being authorised to trade. */
   operator: `0x${string}`;
-  /** How much USDso to move into the vault. Zero is a valid ask: none. */
-  amount: bigint;
   /** Do fills already settle to the vault for this account? */
   vaultModeOn: boolean;
   /** What the pool may already take from the wallet. */
@@ -45,8 +43,28 @@ export interface SetupState {
 }
 
 /**
+ * The standing allowance granted once, at setup.
+ *
+ * Setup no longer knows any run's amount - that is asked for later, at
+ * buy-in - so it cannot approve an exact figure the way a deposit-carrying
+ * setup could. Large enough that ordinary play across many runs never comes
+ * close to spending it back down to the threshold below.
+ */
+export const STANDING_ALLOWANCE_USDSO = 1_000_000_000000000000000000n;
+
+/**
+ * Re-approve only once the allowance has actually run low.
+ *
+ * Without a threshold, a re-run of setup on an already-approved account would
+ * ask for a signature that changes nothing - the allowance read back would
+ * already be the standing amount. Set far below the standing amount itself so
+ * this essentially never fires again after the first approval.
+ */
+export const STANDING_ALLOWANCE_THRESHOLD_USDSO = 100_000_000000000000000000n;
+
+/**
  * @returns only the steps that are genuinely missing, in the order they must
- *   run - the allowance always before the deposit that spends it.
+ *   run.
  */
 export function planSetupSteps(state: SetupState): Step[] {
   const steps: Step[] = [];
@@ -64,30 +82,25 @@ export function planSetupSteps(state: SetupState): Step[] {
   }
 
   /*
-   * Permission for exactly this deposit, and nothing left standing.
+   * A standing allowance, not an exact one.
    *
-   * Each approval is consumed to the last unit by the deposit that follows it,
-   * which is why the allowance reads zero between top-ups. That is the intent:
-   * the pool never holds a claim on money the player has not just handed it.
+   * This used to be consumed to the last unit by the deposit that followed it
+   * in the same setup, which is why the allowance read zero between top-ups -
+   * the pool never held a claim on money the player had not just handed it.
+   * That property is gone now: a run's buy-in deposits an amount setup never
+   * sees, so it cannot be pre-approved exactly. Approving a large standing
+   * amount once means a run's own deposit needs no approval of its own, at
+   * the cost of the pool holding a claim on money still sitting in the
+   * wallet between runs - traded away for one owner transaction per run
+   * instead of two.
    */
-  if (state.amount > 0n && state.allowance < state.amount) {
+  if (state.allowance < STANDING_ALLOWANCE_THRESHOLD_USDSO) {
     steps.push({
       label: "the USDso allowance",
       address: USDSO_ADDRESS,
       abi: ERC20_ABI,
       functionName: "approve",
-      args: [state.pool, state.amount],
-    });
-  }
-
-  // The working capital the game trades with.
-  if (state.amount > 0n) {
-    steps.push({
-      label: "the deposit",
-      address: state.pool,
-      abi: SPOT_POOL_ABI,
-      functionName: "deposit",
-      args: [USDSO_ADDRESS, state.amount],
+      args: [state.pool, STANDING_ALLOWANCE_USDSO],
     });
   }
 
@@ -104,6 +117,45 @@ export function planSetupSteps(state: SetupState): Step[] {
         [OPERATOR_SELECTORS.placeOrderFor, OPERATOR_SELECTORS.cancelOrderFor],
         true,
       ],
+    });
+  }
+
+  return steps;
+}
+
+export interface DepositState {
+  pool: `0x${string}`;
+  /** How much USDso this run is committing. Zero is a valid ask: none. */
+  amount: bigint;
+  /** What the pool may already take from the wallet. */
+  allowance: bigint;
+}
+
+/**
+ * One run's buy-in: approve if the standing allowance from setup somehow is
+ * not enough, then deposit. Shares the `Step` shape with `planSetupSteps` so
+ * a wallet that can batch signs this as a single prompt through `runSteps`.
+ */
+export function planDepositSteps(state: DepositState): Step[] {
+  const steps: Step[] = [];
+
+  if (state.amount > 0n && state.allowance < state.amount) {
+    steps.push({
+      label: "the USDso allowance",
+      address: USDSO_ADDRESS,
+      abi: ERC20_ABI,
+      functionName: "approve",
+      args: [state.pool, state.amount],
+    });
+  }
+
+  if (state.amount > 0n) {
+    steps.push({
+      label: "the deposit",
+      address: state.pool,
+      abi: SPOT_POOL_ABI,
+      functionName: "deposit",
+      args: [USDSO_ADDRESS, state.amount],
     });
   }
 
