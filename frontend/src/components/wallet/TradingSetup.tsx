@@ -75,6 +75,9 @@ export default function TradingSetup({
   // now the start button, so folding it away would hide the only way into a
   // run behind a control captioned "Open".
   const [open, setOpen] = useState(true);
+  /* Set when the player pushes the sheet off the game; cleared when the panel
+     is deliberately reopened, so the control is never a one-way door. */
+  const [dismissed, setDismissed] = useState(false);
   const [amount, setAmount] = useState("2");
   const [roundTripCost, setRoundTripCost] = useState<number | null>(null);
   const [stopTerms, setStopTerms] = useState<{
@@ -237,17 +240,42 @@ export default function TradingSetup({
   const expanded = inTheMarket ? open : open || holdsSomethingReal;
 
   /*
-   * Over the game whenever it is a thing to act on rather than glance at:
-   * before a position exists, and again whenever the player opens the folded
-   * panel back up. Reopening used to unfold it inside the 212px rail, where
-   * the controls it exists for are squeezed into a column too narrow to use -
-   * the same reason the buy-in was lifted out of the rail in the first place.
+   * Can this player start a run right now? Trading authorised and money in the
+   * vault is the whole test - PLAY does the buying, staking what the vault
+   * holds.
+   */
+  /*
+   * Only when we KNOW the player cannot play yet.
+   *
+   * The vault reads null until the chain answers, and treating that as empty
+   * threw the sheet over the game on every load for as long as the read took.
+   * Unknown is not the same as empty, so it waits to be told.
+   */
+  const needsSetup =
+    !positionOpen && (!authorized || (vault !== null && vault <= 0));
+
+  /*
+   * Over the game only while it is a thing to act on.
+   *
+   * This sheet covers the whole window, PLAY included. It used to appear
+   * whenever no position was open - which is exactly the state a ready player
+   * is in - so the panel told them to press PLAY while standing on top of it,
+   * with no control to move it aside. It now appears only when they genuinely
+   * cannot play yet, or when they deliberately reopen it over a run, and it can
+   * always be dismissed.
    */
   const asOverlay =
-    overlayUntilOpen && atMenu && (!positionOpen || expanded);
+    overlayUntilOpen &&
+    !dismissed &&
+    ((atMenu && needsSetup) || (positionOpen && expanded));
 
   useEffect(() => {
     if (snapshot?.open) setOpen(false);
+  }, [snapshot?.open]);
+
+  // A run ending is a new decision point, so the sheet is allowed back.
+  useEffect(() => {
+    if (!snapshot?.open) setDismissed(false);
   }, [snapshot?.open]);
 
   const panel = (
@@ -265,19 +293,29 @@ export default function TradingSetup({
                 : "Buying into this pair is how a run starts."}
           </p>
         </div>
-        {/* No collapse control while this is the overlay: folding the panel
-            away there would leave a stub over the game and no way into a run. */}
-        {(inTheMarket || (!holdsSomethingReal && !asOverlay)) && (
-          <button
-            type="button"
-            className="rc-btn rc-btn--primary"
-            aria-expanded={expanded}
-            aria-controls="trading-panel-body"
-            onClick={() => setOpen((o) => !o)}
-          >
-            {expanded ? "Close" : inTheMarket ? "Open panel" : "Open"}
-          </button>
-        )}
+        {/* Always dismissible. Every previous version of this rule hid the
+            control in some state, and each time that state turned out to be
+            one a player could reach and then not leave. */}
+        <button
+          type="button"
+          className="rc-btn rc-btn--primary"
+          aria-expanded={expanded}
+          aria-controls="trading-panel-body"
+          onClick={() => {
+            // Closing the sheet means "get off the game", not "fold to a stub
+            // that is still covering it".
+            if (asOverlay) setDismissed(true);
+            else setOpen((o) => !o);
+          }}
+        >
+          {asOverlay
+            ? "Close"
+            : expanded
+              ? "Close"
+              : inTheMarket
+                ? "Open panel"
+                : "Open"}
+        </button>
       </div>
 
       {inTheMarket && !expanded ? (
@@ -404,27 +442,19 @@ export default function TradingSetup({
                   <div className="ts-error-box">{error}</div>
                 ) : (
                   <ul className="ts-facts">
+                    {/* One fact, because only one of them changes whether a
+                        player should sign. The rest described a flow that has
+                        since changed - it promised "three or four signatures",
+                        which is now wrong in both directions - and sat there
+                        permanently in a 212px column. */}
                     <li>
                       This browser gets its own trading key. It can place and
                       cancel orders and <strong>can never withdraw your
                       money</strong>.
                     </li>
                     <li>
-                      Three or four signatures now, then none — no wallet
-                      popups between shots. The fourth is only needed the
-                      first time you allow this market to take USDso.
-                    </li>
-                    <li>
-                      If your position falls{" "}
-                      <span className="rc-mono">{FLOOR_DROP_PCT}%</span>, it
-                      sells and you play on. This page watches that floor
-                      while it is open, and once a position exists you can
-                      also rest the same floor on the exchange so it holds
-                      even with the tab closed.
-                    </li>
-                    <li>
-                      Trading fees are zero. The only cost is the gap between
-                      the buy and sell price, crossed twice
+                      The only cost is the gap between the buy and sell price,
+                      crossed twice
                       {roundTripCost !== null ? (
                         <>
                           {" — about "}
@@ -634,9 +664,14 @@ export default function TradingSetup({
                     // Withdraw what is actually there, not what the stake
                     // field happens to say - those differ the moment a
                     // position is opened or a deposit fails.
-                    onClick={() =>
-                      withdrawAll(symbol, String(vault ?? 0))
-                    }
+                    onClick={async () => {
+                      await withdrawAll(symbol, String(vault ?? 0));
+                      // Nothing else re-reads it, so the button went on
+                      // offering money that had already left.
+                      const left = await bridge?.vaultUsdso();
+                      if (typeof left === "number") setVault(left);
+                      await refresh();
+                    }}
                     disabled={busy || !vault}
                     className="rc-btn"
                   >
@@ -681,7 +716,11 @@ export default function TradingSetup({
     >
       <div className="ts-overlay-inner">
         <p className="rc-pixel ts-overlay-lead">
-          {positionOpen ? "YOUR POSITION" : "FUND THE VAULT TO PLAY"}
+          {positionOpen
+            ? "YOUR POSITION"
+            : authorized
+              ? "FUND THE VAULT TO PLAY"
+              : "SET UP TRADING TO PLAY"}
         </p>
         {panel}
       </div>

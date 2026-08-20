@@ -72,6 +72,20 @@ export const OPERATOR_REGISTRY_ABI = [
 ] as const;
 
 export const SPOT_POOL_ABI = [
+  /*
+   * Whether fills already settle to the vault for this account.
+   *
+   * Worth reading rather than assuming: the setter was fired on every deposit,
+   * costing a signature each time to write a flag that was already set. Probed
+   * against the live pool - the getter is named for the setter, not "is".
+   */
+  {
+    type: "function",
+    name: "getManualVaultMode",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
   {
     type: "function",
     name: "setManualVaultMode",

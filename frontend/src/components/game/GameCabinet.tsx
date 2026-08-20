@@ -74,7 +74,8 @@ export default function GameCabinet({
           ) : null}
         </div>
         <div className="gc-statusbar-right rc-mono">
-          {hud.terrainCaption || "reading the market"}
+          {hud.terrainCaption ||
+            (hud.active ? "reading the market" : "pick a market and play")}
         </div>
       </div>
 
@@ -160,7 +161,10 @@ function RightRail({
       <div className="gc-rail-block">
         <span className="gc-rail-block-label rc-pixel">THIS LEVEL IS</span>
         <p className="gc-rail-title">
-          {hud.terrainCaption || "Reading the market..."}
+          {/* Only a running scene writes this, so falling back to "loading"
+              made the menu claim to be loading something, permanently. */}
+          {hud.terrainCaption ||
+            (hud.active ? "Reading the market..." : "No run yet.")}
         </p>
       </div>
 

@@ -10,7 +10,7 @@ import {
 } from "wagmi";
 import { getWalletClient } from "wagmi/actions";
 import { somniaNetwork, wagmiConfig } from "@/lib/wagmi";
-import { formatEther, parseEther, parseUnits } from "viem";
+import { encodeFunctionData, formatEther, parseEther, parseUnits } from "viem";
 
 import {
   ERC20_ABI,
@@ -22,6 +22,7 @@ import {
   fetchMarket,
   type MarketMeta,
 } from "@/lib/dreamdex";
+import { planSetupSteps, type Step } from "@/lib/setupSteps";
 import {
   forgetSessionKey,
   getOrCreateSessionKey,
@@ -36,6 +37,91 @@ import {
  * exchange's vault and authorises this browser's throwaway key to place and
  * cancel orders against it. The key can never move the money out.
  */
+
+/**
+ * One write, simulated first, and confirmed afterwards.
+ *
+ * Simulating names the contract's own reason before any gas is spent - the
+ * difference between "the deposit was rejected on chain" and being told which
+ * requirement failed. Confirming matters because a reverted call still returns
+ * a receipt: awaiting the receipt alone once let a failed deposit report
+ * success, and the panel announced trading was on over an empty vault.
+ */
+async function sendChecked(
+  publicClient: NonNullable<ReturnType<typeof usePublicClient>>,
+  signer: NonNullable<Awaited<ReturnType<typeof getWalletClient>>>,
+  account: `0x${string}`,
+  step: Step
+) {
+  const { request } = await publicClient.simulateContract({
+    address: step.address,
+    abi: step.abi,
+    functionName: step.functionName,
+    args: step.args,
+    account,
+  } as never);
+
+  const hash = await signer.writeContract(request as never);
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") {
+    throw new Error(`${step.label} was rejected on chain`);
+  }
+  return receipt;
+}
+
+/**
+ * Run the steps, in one wallet prompt where the wallet allows it.
+ *
+ * Setting up trading and topping up the vault were several transactions each,
+ * so a top-up cost four confirmations to do one thing. Wallets that support
+ * batching can take them as a single approval; those that do not fall back to
+ * signing them in order, which is what happened before.
+ *
+ * The fallback also carries the diagnosis: a failed batch reports only that the
+ * batch failed, so it is replayed one step at a time, and simulation then names
+ * the step and the reason.
+ */
+async function runSteps(
+  publicClient: NonNullable<ReturnType<typeof usePublicClient>>,
+  signer: NonNullable<Awaited<ReturnType<typeof getWalletClient>>>,
+  account: `0x${string}`,
+  steps: Step[]
+) {
+  if (steps.length === 0) return;
+
+  const sequential = async () => {
+    for (const step of steps) {
+      await sendChecked(publicClient, signer, account, step);
+    }
+  };
+
+  if (steps.length === 1) return sequential();
+
+  try {
+    const { id } = await signer.sendCalls({
+      account: signer.account ?? account,
+      chain: somniaNetwork,
+      // Sequential is enough: these steps depend on each other in order, and
+      // demanding all-or-nothing would refuse wallets that can still batch.
+      forceAtomic: false,
+      calls: steps.map((step) => ({
+        to: step.address,
+        data: encodeFunctionData({
+          abi: step.abi,
+          functionName: step.functionName,
+          args: step.args,
+        } as never),
+      })),
+    } as never);
+
+    const result = await signer.waitForCallsStatus({ id });
+    if (result.status !== "success") throw new Error("batch failed");
+  } catch {
+    // Either the wallet refused to batch, or the batch failed and the reason
+    // is worth finding. Both end in the same place.
+    await sequential();
+  }
+}
 
 /*
  * Gas for the browser key, in native STT.
@@ -74,6 +160,13 @@ export interface UseSessionKey {
   /** True when the key is too close to empty to pay for another run's orders. */
   keyOutOfGas: boolean;
   fuelKey: () => Promise<void>;
+  /**
+   * Set up trading, and top the vault up later through the same path.
+   *
+   * Every step is read first and skipped when already done, so this is one
+   * transaction for a top-up and only as many as are genuinely missing for a
+   * first-time setup.
+   */
   enable: (symbol: string, usdsoAmount: string) => Promise<void>;
   revoke: (symbol: string) => Promise<void>;
   withdrawAll: (symbol: string, usdsoAmount: string) => Promise<void>;
@@ -267,23 +360,6 @@ export function useSessionKey(symbol?: string): UseSessionKey {
 
         const amount = parseUnits(usdsoAmount, meta.quoteDecimals);
 
-        /*
-         * A mined transaction is not a successful one.
-         *
-         * A reverted call still produces a receipt, and this only awaited the
-         * receipt - so a deposit that reverted for want of balance sailed
-         * through and the panel announced "Trading is on" over an empty vault.
-         * The player then hit "Only 0.00 USDso available" at the buy-in, four
-         * signatures and a pile of gas later, with nothing having said why.
-         */
-        const wait = async (hash: `0x${string}`, what: string) => {
-          const receipt = await publicClient.waitForTransactionReceipt({ hash });
-          if (receipt.status !== "success") {
-            throw new Error(`${what} was rejected on chain`);
-          }
-          return receipt;
-        };
-
         // Refuse before spending anything if the stake is not actually there.
         // Cheaper to read a balance than to sign four transactions and fail on
         // the third.
@@ -304,71 +380,48 @@ export function useSessionKey(symbol?: string): UseSessionKey {
           return;
         }
 
-        // 0. Fees for the key's own orders, before it is asked to place any.
+        // Fees for the key's own orders, before it is asked to place any.
+        // Its own transfer, and it checks the key's balance first.
         await sendGas(signer, key.address);
 
-        // 1. Fills have to settle to the vault rather than the wallet, or the
-        //    session key would have nothing to trade against.
-        setStep("vault-mode");
-        await wait(
-          await signer.writeContract({
+        /*
+         * Only what is actually missing.
+         *
+         * All four of these used to be fired every single call, so topping the
+         * vault up cost four confirmations to do one thing - twice re-writing
+         * state the chain already recorded. Each is now read first, and a step
+         * already done contributes nothing to the prompt.
+         */
+        const [vaultModeOn, allowance, alreadyAuthorized] = await Promise.all([
+          publicClient.readContract({
             address: meta.pool,
             abi: SPOT_POOL_ABI,
-            functionName: "setManualVaultMode",
-            args: [true],
-          }),
-          "vault mode"
-        );
+            functionName: "getManualVaultMode",
+            args: [address],
+          }) as Promise<boolean>,
+          publicClient.readContract({
+            address: USDSO_ADDRESS,
+            abi: ERC20_ABI,
+            functionName: "allowance",
+            args: [address, meta.pool],
+          }) as Promise<bigint>,
+          refreshAuthorization(meta.pool, key.address),
+        ]);
 
-        // 2. Allowance, but only if the pool does not already have enough.
-        const allowance = await publicClient.readContract({
-          address: USDSO_ADDRESS,
-          abi: ERC20_ABI,
-          functionName: "allowance",
-          args: [address, meta.pool],
+        const steps = planSetupSteps({
+          pool: meta.pool,
+          registry: operatorRegistryFor(chainId),
+          operator: key.address,
+          amount,
+          vaultModeOn,
+          allowance,
+          alreadyAuthorized,
         });
 
-        if (allowance < amount) {
-          setStep("approving");
-          await wait(
-            await signer.writeContract({
-              address: USDSO_ADDRESS,
-              abi: ERC20_ABI,
-              functionName: "approve",
-              args: [meta.pool, amount],
-            }),
-            "the USDso allowance"
-          );
-        }
-
-        // 3. The working capital the game trades with.
-        setStep("depositing");
-        await wait(
-          await signer.writeContract({
-            address: meta.pool,
-            abi: SPOT_POOL_ABI,
-            functionName: "deposit",
-            args: [USDSO_ADDRESS, amount],
-          }),
-          "the deposit"
-        );
-
-        // 4. Place and cancel only. Never withdraw.
-        setStep("granting");
-        await wait(
-          await signer.writeContract({
-            address: operatorRegistryFor(chainId),
-            abi: OPERATOR_REGISTRY_ABI,
-            functionName: "setOperatorApprovalForPool",
-            args: [
-              meta.pool,
-              key.address,
-              [OPERATOR_SELECTORS.placeOrderFor, OPERATOR_SELECTORS.cancelOrderFor],
-              true,
-            ],
-          }),
-          "the key authorisation"
-        );
+        // The step names double as the progress label, so the panel says what
+        // is happening rather than naming a step that was skipped.
+        setStep(steps.length > 1 ? "depositing" : "approving");
+        await runSteps(publicClient, signer, address, steps);
 
         await refreshAuthorization(meta.pool, key.address);
         setStep("ready");
@@ -438,18 +491,25 @@ export function useSessionKey(symbol?: string): UseSessionKey {
         const meta = market ?? (await fetchMarket(symbol));
         if (!meta) throw new Error(`Market ${symbol} not found`);
 
-        await publicClient.waitForTransactionReceipt({
-          hash: await walletClient.writeContract({
-            address: operatorRegistryFor(chainId),
-            abi: OPERATOR_REGISTRY_ABI,
-            functionName: "setOperatorApprovalForPool",
-            args: [
-              meta.pool,
-              key.address,
-              [OPERATOR_SELECTORS.placeOrderFor, OPERATOR_SELECTORS.cancelOrderFor],
-              false,
-            ],
-          }),
+        /*
+         * Checked, not merely awaited.
+         *
+         * This took the receipt as proof, and a reverted call produces one just
+         * the same - so a refused revoke would have forgotten the key locally
+         * while it stayed authorised on chain, which is exactly the outcome the
+         * note below warns against.
+         */
+        await sendChecked(publicClient, walletClient, address, {
+          label: "the revoke",
+          address: operatorRegistryFor(chainId),
+          abi: OPERATOR_REGISTRY_ABI,
+          functionName: "setOperatorApprovalForPool",
+          args: [
+            meta.pool,
+            key.address,
+            [OPERATOR_SELECTORS.placeOrderFor, OPERATOR_SELECTORS.cancelOrderFor],
+            false,
+          ],
         });
 
         // Revoke on chain first, forget locally second. A key that is forgotten
@@ -469,7 +529,7 @@ export function useSessionKey(symbol?: string): UseSessionKey {
   /** Take the working capital back out of the vault. Owner only, by design. */
   const withdrawAll = useCallback(
     async (symbol: string, usdsoAmount: string) => {
-      if (!walletClient || !publicClient) return;
+      if (!walletClient || !publicClient || !address) return;
 
       setError(null);
 
@@ -477,19 +537,20 @@ export function useSessionKey(symbol?: string): UseSessionKey {
         const meta = market ?? (await fetchMarket(symbol));
         if (!meta) throw new Error(`Market ${symbol} not found`);
 
-        await publicClient.waitForTransactionReceipt({
-          hash: await walletClient.writeContract({
-            address: meta.pool,
-            abi: SPOT_POOL_ABI,
-            functionName: "withdraw",
-            args: [USDSO_ADDRESS, parseUnits(usdsoAmount, meta.quoteDecimals)],
-          }),
+        // Same trap as the revoke: a refused withdrawal used to look like a
+        // completed one, because only the receipt was awaited.
+        await sendChecked(publicClient, walletClient, address, {
+          label: "the withdrawal",
+          address: meta.pool,
+          abi: SPOT_POOL_ABI,
+          functionName: "withdraw",
+          args: [USDSO_ADDRESS, parseUnits(usdsoAmount, meta.quoteDecimals)],
         });
       } catch (e) {
         setError((e as Error).message?.split("\n")[0] ?? "Withdraw failed");
       }
     },
-    [walletClient, publicClient, market]
+    [walletClient, publicClient, address, market]
   );
 
   return {
