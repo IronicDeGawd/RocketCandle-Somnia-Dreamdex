@@ -365,6 +365,119 @@ export class MenuScene extends Phaser.Scene {
   }
 
   /**
+   * Say where this level's terrain actually came from.
+   *
+   * Restored after being deleted with the per-pool vault work while its four
+   * callers stayed - which threw on every menu build, so nothing after the
+   * market picker was ever drawn and the screen came up blank.
+   *
+   * Claiming live trading on a network that is not answering would be the one
+   * lie that discredits every other claim the game makes, so an unreachable
+   * exchange is stated plainly rather than glossed.
+   */
+  reportMarketStatus() {
+    if (!this.marketStatusText) return;
+
+    // The temporary notices elsewhere recolour this same line, so the resting
+    // colour has to be restored here rather than assumed.
+    this.marketStatusText.setColor("#3F88C5");
+
+    if (this.marketLoading) {
+      this.marketStatusText.setText("READING THE MARKET...");
+      return;
+    }
+
+    const run = this.registry.get("marketRun");
+
+    if (!run || !run.live) {
+      this.marketStatusText.setText("SIMULATED MARKET - EXCHANGE UNREACHABLE");
+      return;
+    }
+
+    const stages = run.levels.filter((level) => level.live).length;
+    const origin = run.mirrored
+      ? "mirrored from mainnet"
+      : "live on this network";
+
+    this.marketStatusText.setText(
+      `${run.market.label} — ${stages} of ${run.levels.length} stages from real trading, ${origin}`
+    );
+  }
+
+  /*
+   * The three methods below were deleted with the per-pool vault work while
+   * their callers stayed. Choosing a market called into nothing, so the picker
+   * threw on click and on arrow-key cycling. Restored unchanged.
+   */
+  /**
+   * Switch markets and fetch that market's terrain.
+   *
+   * @param {string} marketId
+   */
+  selectMarket(marketId) {
+    if (this.marketLoading || marketId === this.selectedMarketId) return;
+
+    // Changing pairs while holding a position would leave the player owning
+    // one token and shooting at another's price history - the exact thing the
+    // whole design is built to avoid.
+    if (this.hasOpenPosition()) {
+      this.sayMarketLocked();
+      return;
+    }
+
+    const blocked = this.unavailableReason(marketId);
+    if (blocked) {
+      this.saySomething(blocked.toLowerCase(), "#E94F37");
+      return;
+    }
+
+    this.selectedMarketId = marketId;
+    this.registry.set("selectedMarketId", marketId);
+    this.publishSelectedMarket();
+    this.paintMarketChips();
+
+    this.registry.set("marketRunLoading", true);
+
+    MarketDataProvider.generateLiveGameLevels(marketId)
+      .then((run) => {
+        this.registry.set("marketRun", MarketDataProvider.capForPractice(run));
+      })
+      .catch(() => {
+        this.registry.set("marketRun", null);
+      })
+      .finally(() => {
+        this.registry.set("marketRunLoading", false);
+      });
+  }
+  /**
+   * Tell the React side which pair the player chose.
+   *
+   * The picker lives in the canvas but the trading panel lives in the page,
+   * and the panel has to buy the pair that is about to become the terrain.
+   * Uses the same window handle and event the HUD bridge uses rather than
+   * inventing a second channel.
+   */
+  publishSelectedMarket() {
+    if (typeof window === "undefined" || !window.rocketCandleGame) return;
+
+    const market = GAME_MARKETS.find((m) => m.id === this.selectedMarketId);
+    if (!market) return;
+
+    window.rocketCandleGame.selectedMarket = {
+      id: market.id,
+      symbol: market.symbol,
+      label: market.label,
+    };
+    window.dispatchEvent(new CustomEvent("rc-hud"));
+  }
+  /** Is the player holding a position right now? Practice runs never are. */
+  hasOpenPosition() {
+    if (typeof window === "undefined") return false;
+    const trading = window.rocketCandleGame?.trading;
+    return Boolean(trading?.isOpen?.());
+  }
+
+  /**
    * Redraw the chips so the chosen one is obvious.
    */
   paintMarketChips() {
