@@ -90,6 +90,9 @@ export class RunSetupScene extends Phaser.Scene {
      * it straight back. A chosen number must survive a refresh.
      */
     this.commitmentChosen = false;
+    /** Digits typed so far, or null when not typing. */
+    this.typedDraft = null;
+    this.typedBefore = null;
     this.openingStake = 0;
 
     this.exitPlan = {
@@ -167,7 +170,13 @@ export class RunSetupScene extends Phaser.Scene {
         fontSize: "24px",
         color: "#FFFFFF",
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      // Typed entry, because the nudges alone are a poor way to reach a
+      // specific number: one press moves a tenth of the wallet, so landing on
+      // "12.50" out of 50 is guesswork. Click the figure, or just start
+      // typing a digit.
+      .setInteractive({ useHandCursor: true })
+      .on("pointerdown", () => this.beginTyping());
 
     this.nudge(600 - 250, y - 8, "-", () => this.stepCommitment(-this.commitmentStep()));
     this.nudge(600 + 250, y - 8, "+", () => this.stepCommitment(this.commitmentStep()));
@@ -275,9 +284,52 @@ export class RunSetupScene extends Phaser.Scene {
   }
 
   setUpKeys() {
-    this.input.keyboard.on("keydown-ENTER", () => this.startRun());
-    this.input.keyboard.on("keydown-SPACE", () => this.startRun());
-    this.input.keyboard.on("keydown-ESC", () => this.goBack());
+    /*
+     * Typing wins over the shortcuts, while typing.
+     *
+     * ENTER starts a run and ESC leaves the screen, which would make a typed
+     * figure impossible to finish or abandon. A single generic handler decides
+     * first, so a digit begins editing even without clicking the field.
+     */
+    this.input.keyboard.on("keydown", (event) => {
+      const key = event.key;
+
+      if (this.typedDraft === null) {
+        // A digit is unambiguous: nothing else on this screen uses one, so it
+        // means "I want to say a number".
+        if (/^[0-9]$/.test(key)) {
+          this.beginTyping();
+          this.typeKey(key);
+          event.stopPropagation();
+        }
+        return;
+      }
+
+      if (key === "Enter") {
+        this.commitTyped();
+        event.stopPropagation();
+        return;
+      }
+      if (key === "Escape") {
+        this.cancelTyping();
+        event.stopPropagation();
+        return;
+      }
+      if (this.typeKey(key)) event.stopPropagation();
+    });
+
+    this.input.keyboard.on("keydown-ENTER", () => {
+      if (this.typedDraft !== null) return;
+      this.startRun();
+    });
+    this.input.keyboard.on("keydown-SPACE", () => {
+      if (this.typedDraft !== null) return;
+      this.startRun();
+    });
+    this.input.keyboard.on("keydown-ESC", () => {
+      if (this.typedDraft !== null) return;
+      this.goBack();
+    });
     this.input.keyboard.on("keydown-LEFT", () =>
       this.stepCommitment(-this.commitmentStep())
     );
@@ -330,6 +382,77 @@ export class RunSetupScene extends Phaser.Scene {
     return min ? min.safeUsdso : FALLBACK_MIN_STAKE;
   }
 
+  /**
+   * Start typing a figure, replacing it rather than editing in place.
+   *
+   * A player who taps the number means to say a different one, so the field
+   * clears. Escape puts the old figure back.
+   */
+  beginTyping() {
+    if (this.practice() || this.walletBalance === null || this.buyingIn) return;
+    if (this.typedDraft !== null) return;
+    this.typedBefore = this.commitment;
+    this.typedDraft = "";
+    this.refreshCommitment();
+  }
+
+  /** Take the typed figure, clamped to the wallet. */
+  commitTyped() {
+    if (this.typedDraft === null) return;
+    const parsed = Number.parseFloat(this.typedDraft);
+    this.typedDraft = null;
+
+    if (Number.isFinite(parsed)) {
+      // Same clamp the nudges use: never more than the wallet holds. Below the
+      // market's minimum is allowed to stand, shown in red with the figure, so
+      // the player can see what the market wants rather than being silently
+      // corrected.
+      this.commitment = Math.max(0, Math.min(this.walletBalance ?? 0, Math.round(parsed * 100) / 100));
+      this.commitmentChosen = true;
+    }
+
+    this.refreshCommitment();
+    this.publishPlan();
+  }
+
+  /** Abandon what was typed and put the previous figure back. */
+  cancelTyping() {
+    if (this.typedDraft === null) return;
+    this.typedDraft = null;
+    this.commitment = this.typedBefore;
+    this.refreshCommitment();
+  }
+
+  /** One keystroke of a typed figure. Returns true if it was consumed. */
+  typeKey(key) {
+    if (this.typedDraft === null) return false;
+
+    if (key === "Backspace") {
+      this.typedDraft = this.typedDraft.slice(0, -1);
+      this.refreshCommitment();
+      return true;
+    }
+
+    if (/^[0-9]$/.test(key)) {
+      // Two decimal places is the unit money is quoted in here; more would be
+      // shown rounded and read as the app ignoring what was typed.
+      const dot = this.typedDraft.indexOf(".");
+      if (dot !== -1 && this.typedDraft.length - dot > 2) return true;
+      if (this.typedDraft.replace(".", "").length >= 9) return true;
+      this.typedDraft += key;
+      this.refreshCommitment();
+      return true;
+    }
+
+    if ((key === "." || key === ",") && !this.typedDraft.includes(".")) {
+      this.typedDraft += this.typedDraft === "" ? "0." : ".";
+      this.refreshCommitment();
+      return true;
+    }
+
+    return false;
+  }
+
   /** How much one press moves the commitment, scaled to what they hold. */
   commitmentStep() {
     const held = this.walletBalance ?? 0;
@@ -366,6 +489,23 @@ export class RunSetupScene extends Phaser.Scene {
     }
 
     const min = this.minStake();
+
+    /*
+     * While typing, show what is being typed - not the figure it will become.
+     *
+     * Formatting a half-typed number fights the person typing it: "1" would
+     * appear as "1.00" and the next keystroke would land after the decimals.
+     */
+    if (this.typedDraft !== null) {
+      this.commitmentText.setText(`${this.typedDraft || "0"}_ USDso`);
+      this.commitmentText.setColor("#FFFFFF");
+      this.openingStakeText.setText("");
+      this.walletNote.setText(
+        `typing · enter to accept, esc to cancel · you hold ${(this.walletBalance ?? 0).toFixed(2)}`
+      );
+      return;
+    }
+
     const enough = this.commitment >= min;
 
     this.commitmentText.setText(`${this.commitment.toFixed(2)} USDso`);
