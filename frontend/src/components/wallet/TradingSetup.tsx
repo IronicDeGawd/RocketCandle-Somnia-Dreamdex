@@ -321,7 +321,16 @@ export default function TradingSetup({
         );
         const label = (market?.label ?? marketId).replace(/\s*\(.*\)$/, "");
         return (
-          <p key={marketId} className="ts-error" role="alert">
+          /*
+           * A note, not an error.
+           *
+           * `ts-error` carries the red rule reserved for something that went
+           * wrong with the player's money, and role="alert" interrupts a screen
+           * reader. Not being able to reach one market is neither: it says
+           * "unknown", which is worth stating and not worth alarming over. The
+           * loud style is what makes a real warning ignorable.
+           */
+          <p key={marketId} className="ts-note" role="status">
             Could not check {label} for money left behind from a past run -
             this is not the same as there being nothing there.
           </p>

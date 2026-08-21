@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { GAME_MARKETS } from "@/data/DreamdexMarketFeed.js";
 import { fetchMarket, USDSO_ADDRESS } from "@/lib/dreamdex";
+import { somniaNetwork } from "@/lib/wagmi";
 import { createReadClients, readVaultBalance } from "@/lib/orders";
 import { detectStrandedFunds, selectAutoAttemptTargets } from "@/lib/recovery";
 
@@ -93,6 +94,18 @@ export function useVaultReturn(
 
     const found = await Promise.all(
       GAME_MARKETS.map(async (game) => {
+        /*
+         * A market that does not exist on this network cannot be holding money.
+         *
+         * The stablecoin pair trades only on mainnet - its price history is
+         * mirrored here for terrain, and buying it for real is impossible. So
+         * the read was always going to fail, and reporting that failure told
+         * the player every single time that a market "could not be checked",
+         * which reads as a problem with their money. There is no pool here to
+         * hold any.
+         */
+        if (game.tradesOn === "mainnet" && somniaNetwork.testnet) return null;
+
         try {
           const meta = await fetchMarket(
             game.symbol,
