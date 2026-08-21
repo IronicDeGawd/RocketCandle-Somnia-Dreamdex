@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 import { GAME_MARKETS } from "@/data/DreamdexMarketFeed.js";
 import { useExitPlan } from "@/hooks/useGameHud";
@@ -244,6 +244,31 @@ export default function TradingSetup({
   useEffect(() => {
     if (snapshot?.open) setOpen(false);
   }, [snapshot?.open]);
+
+  /*
+   * Ask for setup once, unprompted, when a run cannot be bought yet.
+   *
+   * A connected player who has never set trading up arrives at a picker where
+   * every market is unaffordable and the only clue is a button in the rail.
+   * Opening the sheet the first time says what is missing instead of leaving
+   * them to find it.
+   *
+   * Once only, tracked in a ref: a player who closes this has answered, and
+   * reopening it on the next render would be an argument rather than a prompt.
+   * Never while a position is open - that money is already working.
+   */
+  const askedForSetup = useRef(false);
+  useEffect(() => {
+    if (!overlayUntilOpen) return;
+    if (askedForSetup.current) return;
+    // `authorized` is false before the chain has been asked, so wait for a
+    // wallet AND for the key state to have been read at least once.
+    if (!address || authorized || snapshot?.open) return;
+    if (!sessionKey) return;
+
+    askedForSetup.current = true;
+    setOpen(true);
+  }, [overlayUntilOpen, address, authorized, snapshot?.open, sessionKey]);
 
   const returnNotice = hasReturnNotice ? (
     <>
