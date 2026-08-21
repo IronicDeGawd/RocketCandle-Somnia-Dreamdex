@@ -205,20 +205,44 @@ export function useVaultReturn(
          */
         const clients = createReadClients();
         const meta = await fetchMarket(target.symbol);
-        const [quote, base] = meta
+
+        /*
+         * A failed confirmation read is "don't know", not "unchanged".
+         *
+         * These used to fall back to the PRE-SWEEP figures, so one flaky read
+         * after a sweep that genuinely succeeded redisplayed the same amount as
+         * still stranded - telling a player their money was stuck when it had
+         * already come home. That is the exact inversion of the safeguard the
+         * note above describes. Unreadable is carried as unreadable, which this
+         * file already has a state for.
+         */
+        // null means "could not read", which balances themselves never are.
+        const readOrUnknown = (p: Promise<number>): Promise<number | null> =>
+          p.then((v) => v).catch(() => null);
+
+        const [quoteRead, baseRead]: (number | null)[] = meta
           ? await Promise.all([
-              readVaultBalance(clients, meta, owner!, USDSO_ADDRESS).catch(
-                () => target.quote
+              readOrUnknown(
+                readVaultBalance(clients, meta, owner!, USDSO_ADDRESS)
               ),
-              readVaultBalance(
-                clients,
-                meta,
-                owner!,
-                meta.base,
-                "base"
-              ).catch(() => target.base),
+              readOrUnknown(
+                readVaultBalance(clients, meta, owner!, meta.base, "base")
+              ),
             ])
-          : [target.quote, target.base];
+          : [null, null];
+
+        if (quoteRead === null || baseRead === null) {
+          // Drop it from the list and let the next load re-read: claiming
+          // either outcome here would be a guess about the player's money.
+          setEntries((prev) => prev.filter((e) => e.marketId !== target.marketId));
+          setUnreadable((prev) =>
+            prev.includes(target.marketId) ? prev : [...prev, target.marketId]
+          );
+          return;
+        }
+
+        const quote = quoteRead;
+        const base = baseRead;
 
         const result = meta
           ? detectStrandedFunds({

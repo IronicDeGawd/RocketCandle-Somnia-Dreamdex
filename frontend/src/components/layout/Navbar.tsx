@@ -136,10 +136,24 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
                   gate this feeds compares against the same number
                   (`vault-as-transit.md` §6), so this is the one figure that
                   actually answers "can I play right now". */}
-              <div className="nb-vol" title="USDso in your wallet, ready to play with">
+              {/* Three states, not two: a figure, "not read yet" and "the read
+                  failed". They used to share one dash, so a player holding
+                  money saw exactly what a disconnected wallet shows. */}
+              <div
+                className="nb-vol"
+                title={
+                  Number.isNaN(walletUsdso as number)
+                    ? "Could not read your balance - retrying"
+                    : "USDso in your wallet, ready to play with"
+                }
+              >
                 <span className="nb-vol-label rc-pixel">USDso</span>
                 <span className="nb-vol-value rc-mono">
-                  {walletUsdso === null ? "—" : walletUsdso.toFixed(2)}
+                  {walletUsdso === null
+                    ? "—"
+                    : Number.isNaN(walletUsdso)
+                      ? "?"
+                      : walletUsdso.toFixed(2)}
                 </span>
               </div>
 

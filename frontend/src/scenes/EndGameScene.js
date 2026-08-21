@@ -272,7 +272,7 @@ export class EndGameScene extends Phaser.Scene {
    */
   async displayBestScoreComparison() {
     try {
-      const bestScore = await this.getBestScoreFromBlockchain();
+      const bestScore = this.bestScoreSoFar();
 
       if (this.finalScore >= bestScore && this.finalScore > 0) {
         const badgeWidth = 260;
@@ -299,6 +299,18 @@ export class EndGameScene extends Phaser.Scene {
     }
   }
 
+  /*
+   * The scene-side score submission that used to live here is gone.
+   *
+   * It was guarded on a `window.web3Service` that nothing in the app has ever
+   * created, so it could not run - and it carried its own copy of the reward
+   * formula, presenting a client-side guess as what the contract paid. Real
+   * submission goes through React's completion callback, which reads the
+   * minted amount off the receipt. Deleted rather than left dormant: the next
+   * person to rewire that callback would have found a plausible-looking
+   * alternative sitting here, armed.
+   */
+
   /**
    * Close out the run's position, if it still has one.
    *
@@ -315,9 +327,24 @@ export class EndGameScene extends Phaser.Scene {
       if (!result) return;
 
       const sign = result.pnl >= 0 ? "+" : "";
+
+      /*
+       * "USDso back" must not be said when it did not come back.
+       *
+       * Closing sells the position and then sweeps the pool home, and the
+       * sweep can fail on its own - the sell still happened, so this used to
+       * report the proceeds as returned while the money sat at the exchange
+       * with nothing on this screen saying so. Every other place that closes a
+       * position already carries this warning; this was the fifth, and the one
+       * shown the instant a run ends.
+       */
+      const stillAtExchange = result.sweepError
+        ? " Your money is still at the exchange and will be offered back."
+        : "";
+
       this.showNotification(
-        `💰 Position closed: ${result.proceeds.toFixed(4)} USDso back (${sign}${result.pnl.toFixed(4)})`,
-        result.pnl >= 0 ? "success" : "warning"
+        `💰 Position closed: ${result.proceeds.toFixed(4)} USDso back (${sign}${result.pnl.toFixed(4)})${stillAtExchange}`,
+        result.sweepError || result.pnl < 0 ? "warning" : "success"
       );
     } catch {
       this.showNotification(
@@ -368,353 +395,27 @@ export class EndGameScene extends Phaser.Scene {
     }
   }
 
-  async saveScoreToBlockchain(score) {
-    try {
-      // Enhanced wallet connection checking with detailed logging
-      console.log("🔍 Checking wallet connection for blockchain save...");
-      console.log("Global objects check:", {
-        hasWeb3Service: !!window.web3Service,
-        hasWalletManager: !!window.walletManager,
-        walletManagerIsConnected: window.walletManager?.isConnected,
-        walletAddress: window.walletManager?.address,
-      });
 
-      // Check if Web3 service is available
-      if (!window.web3Service) {
-        console.error("❌ Web3 service not available globally");
-        this.showNotification(
-          "⚠️ Game services not initialized - please refresh and try again",
-          "error"
-        );
-        return;
-      }
 
-      if (!window.walletManager) {
-        console.error("❌ Wallet manager not available globally");
-        this.showNotification(
-          "⚠️ Wallet services not initialized - please refresh and try again",
-          "error"
-        );
-        return;
-      }
-
-      if (!window.walletManager.isConnected) {
-        console.error("❌ Wallet not connected according to global state");
-        this.showNotification(
-          "⚠️ Wallet not connected - score not saved to blockchain",
-          "warning"
-        );
-        return;
-      }
-
-      console.log(
-        "✅ Wallet connection validated, proceeding with blockchain save"
-      );
-
-      //console.log("📝 Saving score to blockchain...");
-
-      // Calculate WICK rewards
-      const baseReward = Math.max(20, Math.floor(score / 50));
-      const completionBonus = this.reason === "completed" ? 50 : 10;
-      const finalReward = baseReward + completionBonus;
-      const efficiencyMultiplier = this.getEfficiencyMultiplier();
-      const efficiencyBonus = Math.floor(baseReward * efficiencyMultiplier);
-      const totalReward = finalReward + efficiencyBonus;
-
-      // Submit score to blockchain
-      const result = await window.web3Service.submitScore(
-        "game-complete",
-        score
-      );
-
-      if (result && result.success) {
-        //console.log("✅ Score saved to blockchain:", result.transactionHash);
-        this.showNotification("✅ Score saved to blockchain!", "success");
-
-        // Reward WICK tokens
-        try {
-          const rocketFuelResult = await window.web3Service.rewardFuel(
-            totalReward
-          );
-
-          if (rocketFuelResult && rocketFuelResult.success) {
-            // //console.log(
-            //   "🎁 WICK reward:",
-            //   rocketFuelResult.transactionHash
-            // );
-
-            // Show the special Wick reward notification with transaction hash
-            this.showWickRewardsWithTx(
-              score,
-              rocketFuelResult.transactionHash
-            );
-          } else {
-            // Show reward notification without transaction hash
-            this.showWickRewards(score);
-          }
-        } catch (rewardError) {
-          console.error("❌ Error rewarding WICK:", rewardError);
-          // Still show reward notification without transaction hash
-          this.showWickRewards(score);
-        }
-
-        // Verify blockchain storage
-        this.verifyBlockchainStorage(score);
-      } else {
-        throw new Error("Failed to save score to blockchain");
-      }
-    } catch (error) {
-      console.error("❌ Error saving score to blockchain:", error);
-
-      // Provide more specific error messages based on the error type
-      let errorMessage = "❌ Failed to save score to blockchain";
-      if (
-        error.message.includes("network") ||
-        error.message.includes("Network")
-      ) {
-        errorMessage = "❌ Network error - check your connection and try again";
-      } else if (
-        error.message.includes("rejected") ||
-        error.message.includes("denied")
-      ) {
-        errorMessage = "❌ Transaction rejected by user";
-      } else if (error.message.includes("insufficient")) {
-        errorMessage = "❌ Insufficient funds for transaction";
-      }
-
-      this.showNotification(errorMessage, "error");
-    }
-  }
 
   /**
-   * Verify blockchain storage and attempt retry if needed
-   * @param {number} score - Score to verify
+   * The player's best score so far, or 0 when it is not known.
+   *
+   * This used to ask a `window.web3Service` that nothing in this app has ever
+   * created, so it always returned 0 - and every run scoring above zero was
+   * then crowned "NEW BEST SCORE". The real figure is read from the contract by
+   * React and published on the bridge, alongside games played and tokens.
    */
-  async verifyBlockchainStorage(score) {
-    try {
-      if (!window.web3Service || !window.walletManager?.isConnected) {
-        return false;
-      }
-
-      //console.log("🔍 Verifying blockchain storage...");
-
-      // Wait a moment for the transaction to be processed
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Fetch recent player scores to verify storage
-      const playerScores = await window.web3Service.getPlayerScores();
-
-      if (
-        playerScores &&
-        playerScores.results &&
-        playerScores.results.length > 0
-      ) {
-        // Check if our score appears in the recent scores
-        const recentScores = playerScores.results.slice(0, 5); // Check last 5 games
-        const foundScore = recentScores.find(
-          (result) =>
-            Math.abs(result.score - score) < 10 && // Allow small variance
-            Date.now() - new Date(result.timestamp).getTime() < 60000 // Within last minute
-        );
-
-        if (foundScore) {
-          //console.log("✅ Blockchain storage verified successfully");
-          this.showNotification(
-            "✅ Game data verified on blockchain",
-            "success"
-          );
-          return true;
-        } else {
-          console.warn("⚠️ Score not found in recent blockchain data");
-          this.showNotification("⚠️ Retrying blockchain storage...", "warning");
-
-          // Attempt retry
-          return await this.retryBlockchainSubmission(score);
-        }
-      } else {
-        console.warn("⚠️ No player scores found");
-        return await this.retryBlockchainSubmission(score);
-      }
-    } catch (error) {
-      console.error("❌ Error verifying blockchain storage:", error);
-      return await this.retryBlockchainSubmission(score);
-    }
+  bestScoreSoFar() {
+    const stats =
+      typeof window !== "undefined"
+        ? window.rocketCandleGame?.playerStats
+        : null;
+    const best = stats?.bestScore;
+    return typeof best === "number" && Number.isFinite(best) ? best : 0;
   }
 
-  /**
-   * Retry blockchain submission with exponential backoff
-   * @param {number} score - Score to retry
-   * @param {number} attempt - Current attempt number
-   */
-  async retryBlockchainSubmission(score, attempt = 1) {
-    const maxRetries = 3;
 
-    if (attempt > maxRetries) {
-      this.showNotification(
-        "❌ Failed to verify blockchain storage after retries",
-        "error"
-      );
-      return false;
-    }
-
-    try {
-      //console.log(`🔄 Retry attempt ${attempt}/${maxRetries}`);
-
-      // Exponential backoff: 2^attempt seconds
-      const delay = Math.pow(2, attempt) * 1000;
-      await new Promise((resolve) => setTimeout(resolve, delay));
-
-      // Retry submission
-      const result = await window.web3Service.submitScore(
-        "game-complete-retry",
-        score
-      );
-
-      if (result && result.success) {
-        //console.log(`✅ Retry ${attempt} successful:`, result.transactionHash);
-        this.showNotification(
-          `✅ Game saved to blockchain (attempt ${attempt})`,
-          "success"
-        );
-        return true;
-      } else {
-        throw new Error(`Retry ${attempt} failed`);
-      }
-    } catch (error) {
-      console.error(`❌ Retry ${attempt} failed:`, error);
-      return await this.retryBlockchainSubmission(score, attempt + 1);
-    }
-  }
-
-  /**
-   * Get best score from blockchain
-   * @returns {number} Best score or 0 if none
-   */
-  async getBestScoreFromBlockchain() {
-    try {
-      if (!window.web3Service) {
-        console.warn("Web3 service not available for best score retrieval");
-        return 0;
-      }
-
-      if (!window.walletManager?.isConnected) {
-        console.warn("Wallet not connected for best score retrieval");
-        return 0;
-      }
-
-      const playerScores = await window.web3Service.getPlayerScores();
-      if (
-        playerScores &&
-        playerScores.results &&
-        playerScores.results.length > 0
-      ) {
-        const bestScore = Math.max(
-          ...playerScores.results.map((result) => result.score)
-        );
-        console.log("📊 Best score retrieved from blockchain:", bestScore);
-        return bestScore;
-      }
-      return 0;
-    } catch (error) {
-      console.warn("Error reading best score from blockchain:", error);
-      return 0;
-    }
-  }
-
-  /**
-   * Calculate and show WICK rewards to the user
-   * @param {number} score - Final game score
-   */
-  showWickRewards(score) {
-    try {
-      // Calculate rewards based on the same logic as GameScene
-      const baseReward = Math.max(20, Math.floor(score / 50));
-      const completionBonus = this.reason === "completed" ? 50 : 10;
-      const finalReward = baseReward + completionBonus;
-
-      // Calculate efficiency bonus
-      const efficiencyMultiplier = this.getEfficiencyMultiplier();
-      const efficiencyBonus = Math.floor(baseReward * efficiencyMultiplier);
-
-      // Total reward
-      const totalReward = finalReward + efficiencyBonus;
-
-      // Create detailed reward breakdown
-      const rewardBreakdown = [
-        `🎯 Base Reward: ${baseReward} FUEL`,
-        `${this.reason === "completed" ? "🏆" : "💪"} ${
-          this.reason === "completed" ? "Completion" : "Participation"
-        } Bonus: ${completionBonus} FUEL`,
-      ];
-
-      if (efficiencyBonus > 0) {
-        rewardBreakdown.push(`⚡ Efficiency Bonus: ${efficiencyBonus} FUEL`);
-      }
-
-      // Show the special Wick reward notification
-      if (window.gameNotifications) {
-        window.gameNotifications.showWickReward(
-          totalReward,
-          rewardBreakdown,
-          null
-        );
-      }
-
-      //console.log(`🪙 WICK reward calculated: ${totalReward} tokens`);
-
-      return totalReward;
-    } catch (error) {
-      console.error("Error calculating WICK rewards:", error);
-      return 0;
-    }
-  }
-
-  /**
-   * Calculate and show WICK rewards with transaction hash
-   * @param {number} score - Final game score
-   * @param {string} txHash - Transaction hash for the reward
-   */
-  showWickRewardsWithTx(score, txHash) {
-    try {
-      // Calculate rewards based on the same logic as GameScene
-      const baseReward = Math.max(20, Math.floor(score / 50));
-      const completionBonus = this.reason === "completed" ? 50 : 10;
-      const finalReward = baseReward + completionBonus;
-
-      // Calculate efficiency bonus
-      const efficiencyMultiplier = this.getEfficiencyMultiplier();
-      const efficiencyBonus = Math.floor(baseReward * efficiencyMultiplier);
-
-      // Total reward
-      const totalReward = finalReward + efficiencyBonus;
-
-      // Create detailed reward breakdown
-      const rewardBreakdown = [
-        `🎯 Base Reward: ${baseReward} FUEL`,
-        `${this.reason === "completed" ? "🏆" : "💪"} ${
-          this.reason === "completed" ? "Completion" : "Participation"
-        } Bonus: ${completionBonus} FUEL`,
-      ];
-
-      if (efficiencyBonus > 0) {
-        rewardBreakdown.push(`⚡ Efficiency Bonus: ${efficiencyBonus} FUEL`);
-      }
-
-      // Show the special Wick reward notification with transaction hash
-      if (window.gameNotifications) {
-        window.gameNotifications.showWickReward(
-          totalReward,
-          rewardBreakdown,
-          txHash
-        );
-      }
-
-      return totalReward;
-    } catch (error) {
-      console.error("Error calculating WICK rewards:", error);
-      return 0;
-    }
-  }
 
   /**
    * Get efficiency multiplier based on game performance

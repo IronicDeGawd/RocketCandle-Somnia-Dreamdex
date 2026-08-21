@@ -166,8 +166,13 @@ async function runSteps(
        * and repeating them is how a player pays twice. Surfacing the failure
        * leaves the money recoverable through the return path, which is the
        * outcome we can actually reason about.
+       *
+       * Marked, because the caller has to say something different: once these
+       * reached the wallet, "nothing left your wallet" may simply be untrue.
        */
-      throw e instanceof Error ? e : new Error(String(e));
+      const err = e instanceof Error ? e : new Error(String(e));
+      (err as Error & { broadcast?: boolean }).broadcast = true;
+      throw err;
     }
 
     // Never left the wallet - it simply cannot batch. Safe to do them one by

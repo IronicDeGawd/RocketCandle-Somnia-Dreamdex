@@ -468,6 +468,28 @@ export default function GamePage() {
   // Refresh player stats after successful transaction
   useEffect(() => {
     if (isSuccess && lastGameResult) {
+      /*
+       * A fetched receipt is not a successful run.
+       *
+       * `isSuccess` means the receipt ARRIVED - a reverted transaction produces
+       * one exactly like a successful one, and viem does not throw for it. This
+       * branch reported "Score Submitted" for a run the contract refused: a bad
+       * signature, a spent nonce or the anti-cheat guard would land here, the
+       * minted amount would read as zero because there were no logs, and the
+       * player would be told their run was saved for nothing. The library's own
+       * `sendChecked` has checked receipt status for exactly this reason since
+       * the first time it bit us; the one screen that tells a player their run
+       * was recorded never did.
+       */
+      if (receipt && receipt.status !== "success") {
+        console.error("Score submission reverted on chain:", hash);
+        notifyError(
+          "Your run was not recorded",
+          "The chain refused the submission. Nothing was minted, and your score was not saved."
+        );
+        return;
+      }
+
       console.log("✅ Score submitted successfully! Hash:", hash);
       if (hash) {
         notifyTransactionConfirmed(hash);

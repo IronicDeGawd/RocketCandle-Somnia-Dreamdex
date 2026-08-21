@@ -420,11 +420,27 @@ export function buildTradingBridge({
       // exchange" the way a landed deposit with a failed buy is.
       await depositCommitment(commitmentUsdso);
     } catch (e) {
+      /*
+       * Only claim the money is still in the wallet when it can be known.
+       *
+       * A deposit can fail AFTER it reached the wallet and possibly the chain -
+       * an RPC hiccup while waiting for the receipt, or a batch that partly
+       * ran. `runSteps` marks those, because telling a player nothing left
+       * their wallet when it may already have gone sends them to look in the
+       * wrong place. Unknown is reported as unknown, and routed to the same
+       * return path a landed deposit uses.
+       */
+      const broadcast = Boolean(
+        (e as Error & { broadcast?: boolean })?.broadcast
+      );
+      const reason = e instanceof Error ? e.message : String(e);
+
       throw new BuyInError(
-        `Could not deposit ${commitmentUsdso} USDso (${
-          e instanceof Error ? e.message : String(e)
-        }). Nothing left your wallet.`,
-        false
+        broadcast
+          ? `Could not confirm the ${commitmentUsdso} USDso deposit (${reason}). ` +
+            `It may have gone through - anything at the exchange will be offered back.`
+          : `Could not deposit ${commitmentUsdso} USDso (${reason}). Nothing left your wallet.`,
+        broadcast
       );
     }
 

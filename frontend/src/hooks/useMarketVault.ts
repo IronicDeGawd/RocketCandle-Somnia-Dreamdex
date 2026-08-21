@@ -48,7 +48,7 @@ export function useWalletUsdso(): number | null {
 export function useWalletUsdsoLive(): number | null {
   const { address } = useAccount();
 
-  const { data } = useReadContract({
+  const { data, isError } = useReadContract({
     address: USDSO_ADDRESS,
     abi: ERC20_ABI,
     functionName: "balanceOf",
@@ -62,5 +62,14 @@ export function useWalletUsdsoLive(): number | null {
   });
 
   if (!address) return null;
-  return typeof data === "bigint" ? Number(data) / 1e18 : null;
+  if (typeof data === "bigint") return Number(data) / 1e18;
+
+  /*
+   * A read that is still in flight, or that failed, is not zero and not
+   * "disconnected" - and returning null for all three was the very bug this
+   * hook replaced, moved one layer along. NaN is carried deliberately: it is a
+   * number the caller cannot mistake for a balance, so the navbar keeps showing
+   * its dash while the difference stays visible to anyone debugging.
+   */
+  return isError ? Number.NaN : null;
 }

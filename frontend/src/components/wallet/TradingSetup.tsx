@@ -655,8 +655,13 @@ export default function TradingSetup({
               {snapshot.pnlPct.toFixed(1)}%
             </span>
           </p>
-        ) : hasReturnNotice ? (
+        ) : hasStrandedMoney ? (
           <p className="ts-rail-hint rc-mono">Money to return - open</p>
+        ) : hasUnreadableMarket ? (
+          // Same distinction the open panel makes. This collapsed line was
+          // missed when that was fixed, so a market that merely failed to read
+          // still promised money here.
+          <p className="ts-rail-hint rc-mono">One market unchecked - open</p>
         ) : null}
       </div>
     );
