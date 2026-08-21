@@ -80,9 +80,31 @@ export const recordTrade = async (
 ): Promise<{ volumeUsdso: number; trades: number } | null> => {
   try {
     return await request("/api/volume", { txHash, amountUsdso });
-  } catch {
+  } catch (e) {
+    /*
+     * A 401 here is not a failure, it is "not signed in yet".
+     *
+     * This endpoint needs a session, and a session is only opened when a run is
+     * submitted - so every trade before that point was a guaranteed rejection,
+     * one failed request per buy, top-up and sell, each one logged in the
+     * console as though something had gone wrong. Volume genuinely does not
+     * accrue until a session exists; that is worth knowing, not worth shouting.
+     */
+    if (e instanceof AttestationError && e.status === 401) return null;
+
+    console.warn("Could not record trade volume:", e);
     return null;
   }
+};
+
+/**
+ * Whether the service will accept a volume report right now.
+ *
+ * Cheap enough to ask before firing one per trade leg, and the answer changes
+ * only when a session opens or expires.
+ */
+export const canRecordTrade = async (): Promise<boolean> => {
+  return (await getAttestationSession()) !== null;
 };
 
 /** What this wallet has traded, according to the service. */

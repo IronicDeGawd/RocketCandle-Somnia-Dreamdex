@@ -186,14 +186,11 @@ function RightRail({
             >
               EJECT
             </button>
-            <button
-              type="button"
-              className="gc-rail-btn rc-pixel"
-              onClick={() => controls?.addFirepower()}
-              disabled={!controls}
-            >
-              +FIREPOWER
-            </button>
+            {/* +FIREPOWER hidden 2026-08-21: adding to a position kept failing
+                in play and is not diagnosed yet. Showing a control that does
+                not work is worse than not offering it. The mechanic and the F
+                key are untouched, so nothing needs rebuilding when the cause
+                is found - this is one element to put back. */}
           </div>
         </div>
       ) : null}

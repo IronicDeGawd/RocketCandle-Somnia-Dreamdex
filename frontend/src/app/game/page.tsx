@@ -186,6 +186,7 @@ export default function GamePage() {
   // identical object. Tracking which one was already shown stops that
   // second, raw-text notification from firing for the same failure.
   const notifiedWriteErrorRef = useRef<unknown>(null);
+  const notifiedReceiptRef = useRef<`0x${string}` | undefined>(undefined);
   const {
     isLoading: isConfirming,
     isSuccess,
@@ -467,7 +468,18 @@ export default function GamePage() {
 
   // Refresh player stats after successful transaction
   useEffect(() => {
-    if (isSuccess && lastGameResult) {
+    if (isSuccess && lastGameResult && notifiedReceiptRef.current !== hash) {
+      /*
+       * Once per transaction, not once per render.
+       *
+       * This effect depends on several values that change identity on a
+       * re-render, so it re-ran after the same submission - repeating the stats
+       * refresh and its chain reads, which is most of the request burst a
+       * player sees the moment a run ends. The write-error effect above already
+       * dedupes exactly this way.
+       */
+      notifiedReceiptRef.current = hash;
+
       /*
        * A fetched receipt is not a successful run.
        *
