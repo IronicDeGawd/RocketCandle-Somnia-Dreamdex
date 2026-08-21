@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from "@/app/providers";
 import { useTradedVolume } from "@/hooks/useTradedVolume";
-import { useWalletUsdso } from "@/hooks/useMarketVault";
+import { useWalletUsdsoLive } from "@/hooks/useMarketVault";
 import SomniaLogo from "../ui/SomniaLogo";
 import "./navbar.css";
 
@@ -14,7 +14,9 @@ interface NavbarProps {
 const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
   const { connectWallet, signOut, isLoading, isAuthenticated, user, playerStats } = useApp();
   const tradedVolume = useTradedVolume(user?.address);
-  const walletUsdso = useWalletUsdso();
+  // Read from the chain, not from the game canvas: this bar outlives every
+  // scene, and a canvas remount used to blank the figure.
+  const walletUsdso = useWalletUsdsoLive();
 
   // The wallet dropdown and the mobile hamburger menu used to share one
   // boolean, so opening either one closed the other - a phone user could

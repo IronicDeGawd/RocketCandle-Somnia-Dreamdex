@@ -1,6 +1,9 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { useAccount, useReadContract } from "wagmi";
+
+import { ERC20_ABI, USDSO_ADDRESS } from "@/lib/dreamdex";
 
 /**
  * What the wallet holds in USDso, right now.
@@ -30,4 +33,34 @@ function read(): string {
 export function useWalletUsdso(): number | null {
   const packed = useSyncExternalStore(subscribe, read, () => "");
   return packed === "" ? null : Number(packed);
+}
+
+/**
+ * The same figure, read straight from the chain.
+ *
+ * The bridge version above exists for the game canvas, which cannot use React
+ * state. The navbar is not the canvas - it is page chrome that outlives every
+ * scene - so hanging its balance off a global the canvas owns meant a canvas
+ * remount blanked it, and the player saw a dash while holding money. This
+ * reads the token directly through wagmi and does not care what the game is
+ * doing.
+ */
+export function useWalletUsdsoLive(): number | null {
+  const { address } = useAccount();
+
+  const { data } = useReadContract({
+    address: USDSO_ADDRESS,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: {
+      enabled: Boolean(address),
+      // Moves when a run opens or closes, so not a one-off read - but it
+      // gates a choice rather than driving a ticker.
+      refetchInterval: 15_000,
+    },
+  });
+
+  if (!address) return null;
+  return typeof data === "bigint" ? Number(data) / 1e18 : null;
 }

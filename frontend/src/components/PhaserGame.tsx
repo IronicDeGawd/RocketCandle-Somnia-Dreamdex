@@ -84,7 +84,19 @@ export default function PhaserGame({
 
     // Set up global wallet state for game scenes
     if (typeof window !== "undefined") {
+      /*
+       * Merged, not replaced.
+       *
+       * Assigning a fresh object here wiped every key other hooks had written
+       * into this bridge - the wallet balance, the market minimums, the trading
+       * snapshot - because this effect re-runs whenever the wallet or the
+       * submit-eligibility changes, tearing the canvas down and building it
+       * again. The republish event below was covering for that, which is a race
+       * rather than a fix: whatever had not been re-read yet simply vanished,
+       * and a player saw a dash where their balance belongs.
+       */
       window.rocketCandleGame = {
+        ...(window.rocketCandleGame ?? {}),
         isConnected: isAuthenticated,
         address: walletAddress,
         // Left undefined in practice mode. A no-op stub here would let the
