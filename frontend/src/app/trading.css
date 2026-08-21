@@ -247,6 +247,10 @@
   justify-content: center;
   padding: 24px;
   background: rgba(20, 22, 26, 0.72);
+  /* Pushes the game behind the sheet out of focus so the eye lands on the
+     panel. Prefixed for Safari, which still needs it. */
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
   overflow-y: auto;
 }
 
