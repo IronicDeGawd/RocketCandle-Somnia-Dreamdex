@@ -19,3 +19,6 @@ deployments.json
 
 # The replacement owner key. Never commit.
 .env.newowner
+
+# The replacement run-signing key. Never commit.
+.env.newattestor
