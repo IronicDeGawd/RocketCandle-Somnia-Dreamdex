@@ -89,6 +89,15 @@ export function useMarketMinimums(owner?: `0x${string}` | null) {
        * a wallet is connected, so a caller can tell "not read yet" apart
        * from "reads as zero".
        */
+      /*
+       * A failed read must not look like "no wallet".
+       *
+       * This used to catch into `undefined`, which is the same value the hook
+       * publishes when nobody is connected - so one RPC hiccup showed a
+       * connected player a dash, indistinguishable from being logged out, and
+       * the next attempt was a full minute away. It now throws, which reaches
+       * the retry below.
+       */
       const walletUsdso = owner
         ? await clients.publicClient
             .readContract({
@@ -98,7 +107,6 @@ export function useMarketMinimums(owner?: `0x${string}` | null) {
               args: [owner],
             })
             .then((raw) => Number(raw) / 1e18)
-            .catch(() => undefined)
         : undefined;
 
       if (cancelled || typeof window === "undefined") return;
@@ -128,10 +136,31 @@ export function useMarketMinimums(owner?: `0x${string}` | null) {
     // without a duplicate-read storm.
     window.addEventListener("rc-game-ready", publish);
 
-    const safeRead = () =>
-      read().catch((err) => {
+    /*
+     * Retry soon after a failure, not on the slow tick.
+     *
+     * The interval below is deliberately slow because this gates a choice
+     * rather than driving a ticker - but that made a single failed read cost a
+     * full minute of showing a dash where a balance belongs, which is exactly
+     * what a player reported. A failure now retries in seconds, backing off so
+     * a genuinely unreachable RPC is not hammered.
+     */
+    const RETRY_MS = [2_000, 5_000, 15_000];
+    let retries = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const safeRead = async () => {
+      try {
+        await read();
+        retries = 0;
+      } catch (err) {
         console.error("useMarketMinimums: read cycle failed", err);
-      });
+        if (cancelled) return;
+        const wait = RETRY_MS[Math.min(retries, RETRY_MS.length - 1)];
+        retries += 1;
+        retryTimer = setTimeout(safeRead, wait);
+      }
+    };
 
     safeRead();
 
@@ -142,6 +171,7 @@ export function useMarketMinimums(owner?: `0x${string}` | null) {
     return () => {
       cancelled = true;
       clearInterval(timer);
+      if (retryTimer) clearTimeout(retryTimer);
       window.removeEventListener("rc-game-ready", publish);
     };
   }, [owner]);
