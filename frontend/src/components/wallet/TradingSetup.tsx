@@ -106,8 +106,19 @@ export default function TradingSetup({
     symbol,
     positionOpen: Boolean(snapshot?.open),
   });
-  const hasReturnNotice =
-    strandedEntries.length > 0 || strandedUnreadable.length > 0;
+  /*
+   * Money actually seen at the exchange, kept apart from a market that could
+   * not be read.
+   *
+   * These were one flag, so a market whose balance failed to read announced
+   * "money from a past run is waiting to come home" - a claim about money to a
+   * player whose pools were all empty. Unreadable means unknown, not stranded,
+   * and the loud version of that message is the kind of false alarm that
+   * teaches people to ignore the true one.
+   */
+  const hasStrandedMoney = strandedEntries.length > 0;
+  const hasUnreadableMarket = strandedUnreadable.length > 0;
+  const hasReturnNotice = hasStrandedMoney || hasUnreadableMarket;
 
   // What a resting stop costs, read from the exchange rather than assumed - the
   // deposit is set by the registry admin and can change between runs.
@@ -327,13 +338,15 @@ export default function TradingSetup({
             {snapshot?.open ? "Your position" : "Buy in to play"}
           </h2>
           <p className="ts-toggle-note">
-            {hasReturnNotice
+            {hasStrandedMoney
               ? "Money from a past run is waiting to come home - open for details."
-              : snapshot?.open
-                ? "Open in the market. It sells back when the run ends."
-                : holdsSomethingReal
-                  ? "Trading is on. Buy in to start a run."
-                  : "Buying into this pair is how a run starts."}
+              : hasUnreadableMarket
+                ? "One market could not be checked - open for details."
+                : snapshot?.open
+                  ? "Open in the market. It sells back when the run ends."
+                  : holdsSomethingReal
+                    ? "Trading is on. Buy in to start a run."
+                    : "Buying into this pair is how a run starts."}
           </p>
         </div>
         {/* Always dismissible. Every previous version of this rule hid the
