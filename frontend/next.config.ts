@@ -16,11 +16,30 @@ const nextConfig: NextConfig = {
   },
   
   // Additional development overlay settings
-  eslint: {
-    ignoreDuringBuilds: false,
-  },
+  // Next 16 removed the `eslint` config key. This project has no ESLint
+  // config at all (`npm run lint` fails outright), so there was nothing for it
+  // to control - the type check is what guards the build.
   typescript: {
     ignoreBuildErrors: false,
+  },
+
+  /*
+   * The same stubbing as the webpack config below, for Turbopack.
+   *
+   * Next 16 builds with Turbopack by default and refuses to run with a webpack
+   * config and no Turbopack one - correctly, since the aliases below are
+   * load-bearing: without them the build cannot resolve packages that are
+   * declared as peers but never installed. Turbopack has no equivalent of
+   * webpack's `false`, so each one points at an empty module instead.
+   */
+  turbopack: {
+    resolveAlias: {
+      "@x402/core": "./stubs/empty.js",
+      "@x402/evm": "./stubs/empty.js",
+      "@x402/extensions": "./stubs/empty.js",
+      "@x402/svm": "./stubs/empty.js",
+      "@react-native-async-storage/async-storage": "./stubs/empty.js",
+    },
   },
 
   webpack: (config) => {
